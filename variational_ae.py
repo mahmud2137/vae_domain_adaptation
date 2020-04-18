@@ -205,29 +205,41 @@ class VAE():
 
         xent_loss = self.t_total_pixel * binary_crossentropy(K.flatten(y_true), K.flatten(y_pred))
         kl_loss = - 0.25 * K.sum(1 + self.t_z_log_var - K.square(self.t_z_mean) - K.exp(self.t_z_log_var), axis=-1)
-        mmd_loss = maximum_mean_discrepancy(self.t_z_mean, self.s_lat, kernel=gaussian_kernel)
-        vae_loss = K.mean(xent_loss + kl_loss)
+        mmd_loss = maximum_mean_discrepancy(self.s_z_mean, self.t_z_mean, kernel=gaussian_kernel)
+        vae_loss = K.mean(xent_loss + mmd_loss)
         return vae_loss
 
 
-    def train_target(self, X_s, X_t):
+    def train_target(self, X_s, X_t, n_samples, epochs = 10, batch_size = 128):
 
-        self.s_encoder.trainable = False
-        for l in range(len(self.s_encoder.layers)-1):
-            w = self.s_encoder.layers[l].get_weights()
-            self.t_encoder.layers[l].set_weights(w)
+        # self.s_encoder.trainable = False
+        # for l in range(len(self.s_encoder.layers)-1):
+        #     w = self.s_encoder.layers[l].get_weights()
+        #     self.t_encoder.layers[l].set_weights(w)
         
-        batch_size = 64
-        idx = np.random.randint(0, X_s.shape[0], batch_size)
-        batch_s = X_s[idx]
+        n_batches = n_samples//batch_size
+        for e in range(epochs):
+            s_l_sum = 0
+            t_l_sum = 0
+            for batch in range(n_batches):
+                idx = np.random.randint(0, X_s.shape[0], batch_size)
+                batch_s = X_s[idx]
 
-        idx = np.random.randint(0, X_t.shape[0], batch_size)
-        batch_t = X_t[idx]
+                idx = np.random.randint(0, X_t.shape[0], batch_size)
+                batch_t = X_t[idx]
 
-        self.s_lat = self.s_encoder.predict(batch_s)
-        self.t_v_autoencoder.compile(loss= self.t_vae_loss,  optimizer = 'adam')
-        self.t_v_autoencoder.train_on_batch(batch_t, batch_t)
-        # print(s_latent[0].shape)
+                self.s_v_autoencoder.compile(loss = self.s_vae_loss, optimizer='adam')
+                s_l = self.s_v_autoencoder.train_on_batch(batch_s, batch_s)
+
+                self.t_v_autoencoder.compile(loss= self.t_vae_loss,  optimizer = 'adam')
+                t_l = self.t_v_autoencoder.train_on_batch(batch_t, batch_t)
+                s_l_sum += s_l
+                t_l_sum += t_l
+
+                # if batch % 50 == 0:
+                print(f"batch: {batch}, source loss: {s_l}, target loss: {t_l} \n")
+
+            print(f"\tEpoch: {e}, Avg Source Loss: {s_l_sum/n_batches}, Avg Target Loss: {t_l_sum/n_batches}")
 
 
 if __name__ == '__main__':
@@ -243,7 +255,8 @@ if __name__ == '__main__':
 
     # network parameters
     input_shape = x_train.shape[1:]
-    
+    n_samples = x_train.shape[0]
+
     # intermediate_dim = 512
     batch_size = 128
     latent_dim = 3
@@ -263,7 +276,6 @@ if __name__ == '__main__':
     # vae.s_v_autoencoder.save_weights('model_weights/source_vae.h5')
 
     vae.s_v_autoencoder.load_weights('model_weights/source_vae.h5')
-    vae.train_target(x_train, x_train)
-    vae.s_lat[2].shape
+    vae.train_target(x_train, x_train, n_samples)
 
 
