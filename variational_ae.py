@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 
-from keras.layers import Lambda, Reshape, Input, Dense, Conv2D, MaxPool2D, Flatten, UpSampling2D
+from keras.layers import Lambda, Reshape, Input, Dense, Conv2D, MaxPool2D, Flatten, UpSampling2D, concatenate
 from keras.models import Model, Sequential
 from keras.datasets import mnist
 from keras.losses import mse, binary_crossentropy
@@ -97,6 +97,9 @@ def plot_results(models,
     plt.savefig(filename)
     plt.show()
 
+def zero_activation(x):
+    return x * 0
+
 
 class VAE():
     def __init__(self, s_input_shape, t_input_shape, n_classes, latent_dim=3):
@@ -109,8 +112,9 @@ class VAE():
         self.latent_dim = latent_dim
         self.t_total_pixel = t_input_shape[0] * t_input_shape[1]
 
-        self.s_build_model()
-        self.t_build_model()
+        # self.s_build_model()
+        # self.t_build_model()
+        self.build_st_model()
 
     def s_encoder_layers(self,x):
         
@@ -126,15 +130,15 @@ class VAE():
         self.s_z = Lambda(sampling, output_shape=(self.latent_dim,), name='s_z')([self.s_z_mean, self.s_z_log_var])
         return self.s_z 
 
-    def s_decoder_layers(self):
-        self.s_latent_inputs = Input(shape=(self.latent_dim,), name='s_z_sampling')
-        x = Dense(7*7*32, activation='relu')(self.s_latent_inputs)
+    def s_decoder_layers(self,x):
+        # self.s_latent_inputs = Input(shape=(self.latent_dim,), name='s_z_sampling')
+        x = Dense(7*7*32, activation='relu')(x)
         x = Reshape((7,7,32))(x)
         x = Conv2D(32, (2,2), padding = 'same', strides = (1,1), activation = 'relu')(x)
         x = UpSampling2D((2,2))(x)
         x = Conv2D(16, (3,3), padding = 'same', strides = (1,1), activation = 'relu')(x)
         x = UpSampling2D((2,2))(x)
-        s_outputs = Conv2D(input_shape[2], (3,3), padding = 'same', strides = (1,1), activation = 'linear')(x)
+        s_outputs = Conv2D(input_shape[2], (3,3), padding = 'same', strides = (1,1), activation = 'linear', name ='s_output')(x)
         return s_outputs
 
     
@@ -152,15 +156,15 @@ class VAE():
         self.t_z = Lambda(sampling, output_shape=(self.latent_dim,), name='z')([self.t_z_mean, self.t_z_log_var])
         return self.t_z 
 
-    def t_decoder_layers(self):
-        self.t_latent_inputs = Input(shape=(self.latent_dim,), name='z_sampling')
-        x = Dense(7*7*32, activation='relu')(self.t_latent_inputs)
+    def t_decoder_layers(self,x):
+        # self.t_latent_inputs = Input(shape=(self.latent_dim,), name='z_sampling')
+        x = Dense(7*7*32, activation='relu')(x)
         x = Reshape((7,7,32))(x)
         x = Conv2D(32, (2,2), padding = 'same', strides = (1,1), activation = 'relu')(x)
         x = UpSampling2D((2,2))(x)
         x = Conv2D(16, (3,3), padding = 'same', strides = (1,1), activation = 'relu')(x)
         x = UpSampling2D((2,2))(x)
-        t_outputs = Conv2D(input_shape[2], (3,3), padding = 'same', strides = (1,1), activation = 'linear')(x)
+        t_outputs = Conv2D(input_shape[2], (3,3), padding = 'same', strides = (1,1), activation = 'linear', name = 't_output')(x)
         return t_outputs
 
     def build_classifier(self):
@@ -173,21 +177,45 @@ class VAE():
         class_label = model(feats)
         self.classifier = Model(feats, class_label)
 
-    def s_build_model(self):
-        s_input_layer = Input(shape=self.s_input_shape, name = 'encoder_input')
-        latent_space = self.s_encoder_layers(s_input_layer)
-        s_output_layer = self.s_decoder_layers()
-        self.s_encoder = Model(s_input_layer, [self.s_z_mean, self.s_z_log_var, self.s_z], name = 's_encoder')
-        self.s_decoder = Model(self.s_latent_inputs, s_output_layer, name = 's_decoder')
-        self.s_v_autoencoder = Model(s_input_layer, self.s_decoder(self.s_encoder(s_input_layer)[2]), name='v_autoencoder')
+    # def s_build_model(self):
+    #     s_input_layer = Input(shape=self.s_input_shape, name = 's_input')
+    #     latent_space = self.s_encoder_layers(s_input_layer)
+    #     s_output_layer = self.s_decoder_layers()
+    #     self.s_encoder = Model(s_input_layer, [self.s_z_mean, self.s_z_log_var, self.s_z], name = 's_encoder')
+    #     self.s_decoder = Model(self.s_latent_inputs, s_output_layer, name = 's_decoder')
+    #     self.s_v_autoencoder = Model(s_input_layer, self.s_decoder(self.s_encoder(s_input_layer)[2]), name='v_autoencoder')
 
-    def t_build_model(self):
-        t_input_layer = Input(shape=self.t_input_shape, name = 'encoder_input')
-        latent_space = self.t_encoder_layers(t_input_layer)
-        t_output_layer = self.t_decoder_layers()
+    # def t_build_model(self):
+    #     t_input_layer = Input(shape=self.t_input_shape, name = 't_input')
+    #     latent_space = self.t_encoder_layers(t_input_layer)
+    #     t_output_layer = self.t_decoder_layers()
+    #     self.t_encoder = Model(t_input_layer, [self.t_z_mean, self.t_z_log_var, self.t_z], name = 't_encoder')
+    #     self.t_decoder = Model(self.t_latent_inputs, t_output_layer, name = 't_decoder')
+    #     self.t_v_autoencoder = Model(t_input_layer, self.t_decoder(self.t_encoder(t_input_layer)[2]), name='v_autoencoder')
+
+    def build_st_model(self):
+        #building source vae
+        s_input_layer = Input(shape=self.s_input_shape, name = 's_input')
+        s_latent_space = self.s_encoder_layers(s_input_layer)
+        s_output_layer = self.s_decoder_layers(s_latent_space)
+
+        self.s_encoder = Model(s_input_layer, [self.s_z_mean, self.s_z_log_var, self.s_z], name = 's_encoder')
+        # self.s_decoder = Model(s_latent_space, s_output_layer, name = 's_decoder')
+        # self.s_v_autoencoder = Model(s_input_layer, self.s_decoder(self.s_encoder(s_input_layer)[2]), name='v_autoencoder')
+        self.dummy_layer = Dense(self.latent_dim, activation=zero_activation)(s_latent_space)
+        
+        #building target vae
+        t_input_layer = Input(shape=self.t_input_shape, name = 't_input')
+        t_latent_space = self.t_encoder_layers(t_input_layer)
+        
         self.t_encoder = Model(t_input_layer, [self.t_z_mean, self.t_z_log_var, self.t_z], name = 't_encoder')
-        self.t_decoder = Model(self.t_latent_inputs, t_output_layer, name = 't_decoder')
-        self.t_v_autoencoder = Model(t_input_layer, self.t_decoder(self.t_encoder(t_input_layer)[2]), name='v_autoencoder')
+        conc = concatenate([self.dummy_layer, t_latent_space])
+        t_output_layer = self.t_decoder_layers(conc)
+
+        # self.t_decoder = Model(conc, t_output_layer, name = 't_decoder')
+        # self.t_v_autoencoder = Model(t_input_layer, self.t_decoder(self.t_encoder(t_input_layer)[2]), name='v_autoencoder')
+        self.vae_source_target = Model([s_input_layer, t_input_layer], [s_output_layer, t_output_layer])
+
 
     def s_vae_loss(self, y_true, y_pred):
         xent_loss = self.s_total_pixel * binary_crossentropy(K.flatten(y_true), K.flatten(y_pred))
@@ -210,36 +238,36 @@ class VAE():
         return vae_loss
 
 
-    def train_target(self, X_s, X_t, n_samples, epochs = 10, batch_size = 128):
+    # def train_target(self, X_s, X_t, n_samples, epochs = 10, batch_size = 128):
 
-        # self.s_encoder.trainable = False
-        # for l in range(len(self.s_encoder.layers)-1):
-        #     w = self.s_encoder.layers[l].get_weights()
-        #     self.t_encoder.layers[l].set_weights(w)
+    #     # self.s_encoder.trainable = False
+    #     # for l in range(len(self.s_encoder.layers)-1):
+    #     #     w = self.s_encoder.layers[l].get_weights()
+    #     #     self.t_encoder.layers[l].set_weights(w)
         
-        n_batches = n_samples//batch_size
-        for e in range(epochs):
-            s_l_sum = 0
-            t_l_sum = 0
-            for batch in range(n_batches):
-                idx = np.random.randint(0, X_s.shape[0], batch_size)
-                batch_s = X_s[idx]
+    #     n_batches = n_samples//batch_size
+    #     for e in range(epochs):
+    #         s_l_sum = 0
+    #         t_l_sum = 0
+    #         for batch in range(n_batches):
+    #             idx = np.random.randint(0, X_s.shape[0], batch_size)
+    #             batch_s = X_s[idx]
 
-                idx = np.random.randint(0, X_t.shape[0], batch_size)
-                batch_t = X_t[idx]
+    #             idx = np.random.randint(0, X_t.shape[0], batch_size)
+    #             batch_t = X_t[idx]
 
-                self.s_v_autoencoder.compile(loss = self.s_vae_loss, optimizer='adam')
-                s_l = self.s_v_autoencoder.train_on_batch(batch_s, batch_s)
+    #             self.s_v_autoencoder.compile(loss = self.s_vae_loss, optimizer='adam')
+    #             s_l = self.s_v_autoencoder.train_on_batch(batch_s, batch_s)
 
-                self.t_v_autoencoder.compile(loss= self.t_vae_loss,  optimizer = 'adam')
-                t_l = self.t_v_autoencoder.train_on_batch(batch_t, batch_t)
-                s_l_sum += s_l
-                t_l_sum += t_l
+    #             self.t_v_autoencoder.compile(loss= self.t_vae_loss,  optimizer = 'adam')
+    #             t_l = self.t_v_autoencoder.train_on_batch(batch_t, batch_t)
+    #             s_l_sum += s_l
+    #             t_l_sum += t_l
 
-                # if batch % 50 == 0:
-                print(f"batch: {batch}, source loss: {s_l}, target loss: {t_l} \n")
+    #             # if batch % 50 == 0:
+    #             print(f"batch: {batch}, source loss: {s_l}, target loss: {t_l} \n")
 
-            print(f"\tEpoch: {e}, Avg Source Loss: {s_l_sum/n_batches}, Avg Target Loss: {t_l_sum/n_batches}")
+    #         print(f"\tEpoch: {e}, Avg Source Loss: {s_l_sum/n_batches}, Avg Target Loss: {t_l_sum/n_batches}")
 
 
 if __name__ == '__main__':
@@ -263,19 +291,27 @@ if __name__ == '__main__':
     epochs = 50
     n_classes = len(np.unique(y_train))
     vae = VAE(s_input_shape=input_shape, t_input_shape=input_shape, n_classes= n_classes)
+    vae.s_encoder.summary()
     vae.t_encoder.summary()
-    vae.t_decoder.summary()
-    vae.t_v_autoencoder.summary()
+    # vae.t_v_autoencoder.summary()
+    vae.vae_source_target.summary()
+    losses = {'s_output': vae.s_vae_loss, 't_output': vae.t_vae_loss}
+    vae.vae_source_target.compile(loss = losses, optimizer='adam')
+    vae.vae_source_target.fit([x_train, x_train], [x_train, x_train],
+                                epochs=epochs,
+                                batch_size=batch_size,
+                                validation_data=([x_test, x_test], [x_test, x_test]))
+    # plot_model(vae.vae_source_target, to_file='vae_enc_dec.png', show_shapes=True)
 
-    vae.s_v_autoencoder.compile(loss = vae.s_vae_loss, optimizer='adam')
-    # vae.s_v_autoencoder.fit(x_train, x_train,
-    #                         epochs= epochs,
-    #                         batch_size= batch_size,
-    #                         validation_data = (x_test, x_test)
-    #                         )
-    # vae.s_v_autoencoder.save_weights('model_weights/source_vae.h5')
+    # vae.s_v_autoencoder.compile(loss = vae.s_vae_loss, optimizer='adam')
+    # # vae.s_v_autoencoder.fit(x_train, x_train,
+    # #                         epochs= epochs,
+    # #                         batch_size= batch_size,
+    # #                         validation_data = (x_test, x_test)
+    # #                         )
+    # # vae.s_v_autoencoder.save_weights('model_weights/source_vae.h5')
 
-    vae.s_v_autoencoder.load_weights('model_weights/source_vae.h5')
-    vae.train_target(x_train, x_train, n_samples)
+    # vae.s_v_autoencoder.load_weights('model_weights/source_vae.h5')
+    # vae.train_target(x_train, x_train, n_samples)
 
 
