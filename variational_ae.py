@@ -13,7 +13,7 @@ from sklearn.decomposition import PCA
 import tensorflow as tf
 import utils
 from functools import partial
-
+import h5py
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -100,6 +100,57 @@ def plot_results(models,
 def zero_activation(x):
     return x * 0
 
+def sort_by_class_label(x,y):
+    sorted_args = np.argsort(y)
+    y_sorted = y[sorted_args]
+    x_sorted = x[sorted_args]
+    return x_sorted, y_sorted
+
+def upsample_by_class(x_s,y_s,x_t,y_t):
+    x_s_ups = np.array([])
+    y_s_ups = np.array([])
+    x_t_ups = np.array([])
+    y_t_ups = np.array([])
+    for cl in np.unique(y_s):
+        s_args = np.argwhere(y_s == cl).flatten()
+        t_args = np.argwhere(y_t == cl).flatten()
+        if len(s_args) >= len(t_args):
+            x_s_cl_ups = x_s[s_args]
+            y_s_cl_ups = y_s[s_args]
+
+            y_t_cl_ups = y_t[t_args]
+            x_t_cl_ups = x_t[t_args]
+            
+            n_diff = s_args.shape[0] - t_args.shape[0]
+            sampled_args =  np.random.choice(t_args.flatten(), n_diff)
+            y_t_cl_ups = np.append(y_t_cl_ups, y_t[sampled_args], axis=0)
+            x_t_cl_ups = np.append(x_t_cl_ups, x_t[sampled_args], axis=0)
+            
+
+        elif len(s_args) < len(t_args):
+            y_s_cl_ups = y_s[s_args]
+            x_s_cl_ups = x_s[s_args]
+
+            y_t_cl_ups = y_t[t_args]
+            x_t_cl_ups = x_t[t_args]
+            
+            n_diff = t_args.shape[0] - s_args.shape[0]
+            sampled_args =  np.random.choice(s_args.flatten(), n_diff)
+            y_s_cl_ups = np.append(y_s_cl_ups, y_s[sampled_args], axis=0)
+            x_s_cl_ups = np.append(x_s_cl_ups, x_s[sampled_args], axis=0)
+
+        if x_s_ups.shape[0] == 0:
+            x_s_ups = x_s_cl_ups
+            y_s_ups = y_s_cl_ups
+            x_t_ups = x_t_cl_ups
+            y_t_ups = y_t_cl_ups
+        else:
+            x_s_ups = np.append(x_s_ups, x_s_cl_ups, axis=0)
+            y_s_ups = np.append(y_s_ups, y_s_cl_ups, axis=0)
+            x_t_ups = np.append(x_t_ups, x_t_cl_ups, axis=0)
+            y_t_ups = np.append(y_t_ups, y_t_cl_ups, axis=0)
+
+    return x_s_ups, y_s_ups, x_t_ups, y_t_ups
 
 class VAE():
     def __init__(self, s_input_shape, t_input_shape, n_classes, latent_dim=3):
@@ -271,25 +322,48 @@ class VAE():
 
 
 if __name__ == '__main__':
-    (x_train, y_train), (x_test, y_test) = mnist.load_data()
 
-    original_dim = x_train.shape[1] * x_train.shape[2]
-    # x_train = np.reshape(x_train, [-1, original_dim])
-    # x_test = np.reshape(x_test, [-1, original_dim])
-    x_train = np.expand_dims(x_train, axis=-1)
-    x_test = np.expand_dims(x_test, axis=-1)
-    x_train = x_train.astype('float32') / 255
-    x_test = x_test.astype('float32') / 255
+    #Loading Mnist data
+    (x_s_train, y_s_train), (x_s_test, y_s_test) = mnist.load_data()
+
+    original_dim = x_s_train.shape[1] * x_s_train.shape[2]
+    # x_s_train = np.reshape(x_s_train, [-1, original_dim])
+    # x_s_test = np.reshape(x_s_test, [-1, original_dim])
+    x_s_train = np.expand_dims(x_s_train, axis=-1)
+    x_s_test = np.expand_dims(x_s_test, axis=-1)
+    x_s_train = x_s_train.astype('float32') / 255
+    x_s_test = x_s_test.astype('float32') / 255
+
+    #Loading USPS dataset
+    
+    with h5py.File('usps.h5', 'r') as hf:
+            train = hf.get('train')
+            x_t_train = train.get('data')[:].reshape(-1,16,16,1)
+            y_t_train = train.get('target')[:]
+            test = hf.get('test')
+            x_t_test = test.get('data')[:].reshape(-1,16,16,1)
+            y_t_test = test.get('target')[:]
+
+    x_s_train , y_s_train = sort_by_class_label(x_s_train, y_s_train)
+    x_t_train , y_t_train = sort_by_class_label(x_t_train, y_t_train)
+
+    x_s_test , y_s_test = sort_by_class_label(x_s_test, y_s_test)
+    x_t_test , y_t_test = sort_by_class_label(x_t_test, y_t_test)
+
+    x_s_train, y_s_train, x_t_train, y_t_train = upsample_by_class(x_s_train, y_s_train, x_t_train, y_t_train)
+    x_s_test, y_s_test, x_t_test, y_t_test = upsample_by_class(x_s_test, y_s_test, x_t_test, y_t_test)       
+
+
 
     # network parameters
-    input_shape = x_train.shape[1:]
-    n_samples = x_train.shape[0]
+    input_shape = x_s_train.shape[1:]
+    n_samples = x_s_train.shape[0]
 
     # intermediate_dim = 512
     batch_size = 128
-    latent_dim = 3
-    epochs = 50
-    n_classes = len(np.unique(y_train))
+    latent_dim = 10
+    epochs = 10
+    n_classes = len(np.unique(y_s_train))
     vae = VAE(s_input_shape=input_shape, t_input_shape=input_shape, n_classes= n_classes)
     vae.s_encoder.summary()
     vae.t_encoder.summary()
@@ -297,21 +371,21 @@ if __name__ == '__main__':
     vae.vae_source_target.summary()
     losses = {'s_output': vae.s_vae_loss, 't_output': vae.t_vae_loss}
     vae.vae_source_target.compile(loss = losses, optimizer='adam')
-    vae.vae_source_target.fit([x_train, x_train], [x_train, x_train],
+    vae.vae_source_target.fit([x_s_train, x_s_train], [x_t_train, x_t_train],
                                 epochs=epochs,
                                 batch_size=batch_size,
-                                validation_data=([x_test, x_test], [x_test, x_test]))
+                                validation_data=([x_s_test, x_s_test], [x_s_test, x_s_test]))
     # plot_model(vae.vae_source_target, to_file='vae_enc_dec.png', show_shapes=True)
 
     # vae.s_v_autoencoder.compile(loss = vae.s_vae_loss, optimizer='adam')
-    # # vae.s_v_autoencoder.fit(x_train, x_train,
+    # # vae.s_v_autoencoder.fit(x_s_train, x_s_train,
     # #                         epochs= epochs,
     # #                         batch_size= batch_size,
-    # #                         validation_data = (x_test, x_test)
+    # #                         validation_data = (x_s_test, x_s_test)
     # #                         )
     # # vae.s_v_autoencoder.save_weights('model_weights/source_vae.h5')
 
     # vae.s_v_autoencoder.load_weights('model_weights/source_vae.h5')
-    # vae.train_target(x_train, x_train, n_samples)
+    # vae.train_target(x_s_train, x_s_train, n_samples)
 
 
