@@ -189,7 +189,7 @@ class VAE():
         x = UpSampling2D((2,2))(x)
         x = Conv2D(16, (3,3), padding = 'same', strides = (1,1), activation = 'relu')(x)
         x = UpSampling2D((2,2))(x)
-        s_outputs = Conv2D(input_shape[2], (3,3), padding = 'same', strides = (1,1), activation = 'linear', name ='s_output')(x)
+        s_outputs = Conv2D(self.s_input_shape[2], (3,3), padding = 'same', strides = (1,1), activation = 'linear', name ='s_output')(x)
         return s_outputs
 
     
@@ -209,13 +209,13 @@ class VAE():
 
     def t_decoder_layers(self,x):
         # self.t_latent_inputs = Input(shape=(self.latent_dim,), name='z_sampling')
-        x = Dense(7*7*32, activation='relu')(x)
-        x = Reshape((7,7,32))(x)
+        x = Dense(4*4*32, activation='relu')(x)
+        x = Reshape((4,4,32))(x)
         x = Conv2D(32, (2,2), padding = 'same', strides = (1,1), activation = 'relu')(x)
         x = UpSampling2D((2,2))(x)
         x = Conv2D(16, (3,3), padding = 'same', strides = (1,1), activation = 'relu')(x)
         x = UpSampling2D((2,2))(x)
-        t_outputs = Conv2D(input_shape[2], (3,3), padding = 'same', strides = (1,1), activation = 'linear', name = 't_output')(x)
+        t_outputs = Conv2D(self.t_input_shape[2], (3,3), padding = 'same', strides = (1,1), activation = 'linear', name = 't_output')(x)
         return t_outputs
 
     def build_classifier(self):
@@ -353,10 +353,11 @@ if __name__ == '__main__':
     x_s_train, y_s_train, x_t_train, y_t_train = upsample_by_class(x_s_train, y_s_train, x_t_train, y_t_train)
     x_s_test, y_s_test, x_t_test, y_t_test = upsample_by_class(x_s_test, y_s_test, x_t_test, y_t_test)       
 
-
+    y_t_test.shape
 
     # network parameters
-    input_shape = x_s_train.shape[1:]
+    s_input_shape = x_s_train.shape[1:]
+    t_input_shape = x_t_train.shape[1:]
     n_samples = x_s_train.shape[0]
 
     # intermediate_dim = 512
@@ -364,17 +365,17 @@ if __name__ == '__main__':
     latent_dim = 10
     epochs = 10
     n_classes = len(np.unique(y_s_train))
-    vae = VAE(s_input_shape=input_shape, t_input_shape=input_shape, n_classes= n_classes)
+    vae = VAE(s_input_shape=s_input_shape, t_input_shape=t_input_shape, n_classes= n_classes)
     vae.s_encoder.summary()
     vae.t_encoder.summary()
     # vae.t_v_autoencoder.summary()
     vae.vae_source_target.summary()
     losses = {'s_output': vae.s_vae_loss, 't_output': vae.t_vae_loss}
     vae.vae_source_target.compile(loss = losses, optimizer='adam')
-    vae.vae_source_target.fit([x_s_train, x_s_train], [x_t_train, x_t_train],
+    hist = vae.vae_source_target.fit([x_s_train, x_t_train], [x_s_train, x_t_train],
                                 epochs=epochs,
                                 batch_size=batch_size,
-                                validation_data=([x_s_test, x_s_test], [x_s_test, x_s_test]))
+                                validation_data=([x_s_test, x_t_test], [x_s_test, x_t_test]))
     # plot_model(vae.vae_source_target, to_file='vae_enc_dec.png', show_shapes=True)
 
     # vae.s_v_autoencoder.compile(loss = vae.s_vae_loss, optimizer='adam')
