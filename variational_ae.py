@@ -7,7 +7,7 @@ from keras.layers import Lambda, Reshape, Input, Dense, Conv2D, MaxPool2D, Flatt
 from keras.models import Model, Sequential
 from keras.datasets import mnist
 from keras.losses import mse, binary_crossentropy
-from keras.utils import plot_model
+from keras.utils import plot_model, to_categorical
 from keras import backend as K
 from sklearn.decomposition import PCA
 import tensorflow as tf
@@ -19,6 +19,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import argparse
 import os
+
 
 def sampling(args):
     """Reparameterization trick by sampling from an isotropic unit Gaussian.
@@ -162,6 +163,7 @@ class VAE():
         self.t_input_shape = t_input_shape
         self.latent_dim = latent_dim
         self.t_total_pixel = t_input_shape[0] * t_input_shape[1]
+        self.classifier = None
 
         # self.s_build_model()
         # self.t_build_model()
@@ -267,6 +269,18 @@ class VAE():
         # self.t_v_autoencoder = Model(t_input_layer, self.t_decoder(self.t_encoder(t_input_layer)[2]), name='v_autoencoder')
         self.vae_source_target = Model([s_input_layer, t_input_layer], [s_output_layer, t_output_layer])
 
+    def build_s_enc_cls_model(self):
+        # Building The model with Source Encoder and Classifier
+        if self.classifier is None:
+            self.build_classifier()
+        s_enc_cls_model = Model(input=self.s_encoder.input, output=self.classifier(self.s_encoder.output[2]))
+        return s_enc_cls_model
+
+    def build_t_enc_cls_model(self):
+        # Building The model with Target Encoder and Classifier
+        # Assuming The classifier is already built and trained by the source data
+        t_enc_cls_model = Model(input=self.t_encoder.input, output=self.classifier(self.t_encoder.output[2]))
+        return t_enc_cls_model
 
     def s_vae_loss(self, y_true, y_pred):
         xent_loss = self.s_total_pixel * binary_crossentropy(K.flatten(y_true), K.flatten(y_pred))
@@ -353,7 +367,11 @@ if __name__ == '__main__':
     x_s_train, y_s_train, x_t_train, y_t_train = upsample_by_class(x_s_train, y_s_train, x_t_train, y_t_train)
     x_s_test, y_s_test, x_t_test, y_t_test = upsample_by_class(x_s_test, y_s_test, x_t_test, y_t_test)       
 
-    y_t_test.shape
+    y_s_train = to_categorical(y_s_train)
+    y_s_test = to_categorical(y_s_test)
+
+    y_t_train = to_categorical(y_t_train)
+    y_t_test = to_categorical(y_t_test)
 
     # network parameters
     s_input_shape = x_s_train.shape[1:]
@@ -363,30 +381,49 @@ if __name__ == '__main__':
     # intermediate_dim = 512
     batch_size = 128
     latent_dim = 10
-    epochs = 10
+    epochs = 100
     n_classes = len(np.unique(y_s_train))
-    vae = VAE(s_input_shape=s_input_shape, t_input_shape=t_input_shape, n_classes= n_classes)
+    vae = VAE(s_input_shape=s_input_shape, t_input_shape=t_input_shape, n_classes= n_classes, latent_dim=latent_dim)
     vae.s_encoder.summary()
     vae.t_encoder.summary()
     # vae.t_v_autoencoder.summary()
     vae.vae_source_target.summary()
     losses = {'s_output': vae.s_vae_loss, 't_output': vae.t_vae_loss}
     vae.vae_source_target.compile(loss = losses, optimizer='adam')
-    hist = vae.vae_source_target.fit([x_s_train, x_t_train], [x_s_train, x_t_train],
-                                epochs=epochs,
-                                batch_size=batch_size,
-                                validation_data=([x_s_test, x_t_test], [x_s_test, x_t_test]))
-    # plot_model(vae.vae_source_target, to_file='vae_enc_dec.png', show_shapes=True)
+    # hist = vae.vae_source_target.fit([x_s_train, x_t_train], [x_s_train, x_t_train],
+    #                             epochs=epochs,
+    #                             verbose=2,
+    #                             batch_size=batch_size,
+    #                             validation_data=([x_s_test, x_t_test], [x_s_test, x_t_test]))
+    # # plot_model(vae.vae_source_target, to_file='vae_enc_dec.png', show_shapes=True)
 
-    # vae.s_v_autoencoder.compile(loss = vae.s_vae_loss, optimizer='adam')
-    # # vae.s_v_autoencoder.fit(x_s_train, x_s_train,
-    # #                         epochs= epochs,
-    # #                         batch_size= batch_size,
-    # #                         validation_data = (x_s_test, x_s_test)
-    # #                         )
-    # # vae.s_v_autoencoder.save_weights('model_weights/source_vae.h5')
+    # vae.vae_source_target.save_weights('model_weights/vae.h5')
 
-    # vae.s_v_autoencoder.load_weights('model_weights/source_vae.h5')
+    vae.vae_source_target.load_weights('model_weights/vae.h5')
     # vae.train_target(x_s_train, x_s_train, n_samples)
+    s_enc_cls_model = vae.build_s_enc_cls_model()
+    for layer in s_enc_cls_model.layers:
+        layer.trainable = False
+    s_enc_cls_model.layers[-1].trainable = True
+    s_enc_cls_model.compile(loss='categorical_crossentropy', optimizer='adam')
+    s_enc_cls_model.fit(x_s_train, y_s_train,
+                        epochs = 50,
+                        verbose=2,
+                        batch_size=64,
+                        validation_data=(x_s_test, y_s_test))
+
+    
+
+    t_enc_cls_model = vae.build_t_enc_cls_model()
+    t_enc_cls_model.summary()
+    t_enc_cls_model.compile(loss='categorical_crossentropy', optimizer='adam')
+    t_enc_cls_model.fit(x_t_test, y_t_test,
+                        epochs=50,
+                        verbose = 2,
+                        batch_size=64,
+                        validation_data=(x_t_train, y_t_train))
+
+    score = t_enc_cls_model.evaluate(x_t_train, y_t_train)
+    print(f"sore: {score}")
 
 
