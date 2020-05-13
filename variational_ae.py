@@ -6,6 +6,7 @@ from __future__ import print_function
 from keras.layers import Lambda, Reshape, Input, Dense, Conv2D, MaxPool2D, Flatten, UpSampling2D, concatenate
 from keras.models import Model, Sequential
 from keras.datasets import mnist
+from keras.optimizers import Adam
 from keras.losses import mse, binary_crossentropy
 from keras.utils import plot_model, to_categorical
 from keras import backend as K
@@ -36,7 +37,8 @@ def sampling(args):
     dim = K.int_shape(z_mean)[1]
     # by default, random_normal has mean = 0 and std = 1.0
     epsilon = K.random_normal(shape=(batch, dim))
-    return z_mean + K.exp(0.5 * z_log_var) * epsilon
+    # return z_mean + K.exp(0.5 * z_log_var) * epsilon
+    return z_mean + 0*K.exp(0.5 * z_log_var) +  0*epsilon
 
 def maximum_mean_discrepancy(x, y, kernel=utils.gaussian_kernel_matrix):
 
@@ -224,6 +226,8 @@ class VAE():
 
         model = Sequential()
         model.add(Dense(self.latent_dim, activation='relu', input_dim=self.latent_dim))
+        model.add(Dense(20, activation='relu'))
+        model.add(Dense(20, activation='relu'))
         model.add(Dense(self.n_classes, activation='softmax'))
 
         feats = Input(shape=(self.latent_dim,))
@@ -273,18 +277,18 @@ class VAE():
         # Building The model with Source Encoder and Classifier
         if self.classifier is None:
             self.build_classifier()
-        s_enc_cls_model = Model(input=self.s_encoder.input, output=self.classifier(self.s_encoder.output[2]))
-        return s_enc_cls_model
+        self.s_enc_cls_model = Model(input=self.s_encoder.input, output=self.classifier(self.s_encoder.output[2]))
+        
 
     def build_t_enc_cls_model(self):
         # Building The model with Target Encoder and Classifier
         # Assuming The classifier is already built and trained by the source data
-        t_enc_cls_model = Model(input=self.t_encoder.input, output=self.classifier(self.t_encoder.output[2]))
-        return t_enc_cls_model
+        self.t_enc_cls_model = Model(input=self.t_encoder.input, output=self.classifier(self.t_encoder.output[2]))
+        # return t_enc_cls_model
 
     def s_vae_loss(self, y_true, y_pred):
         xent_loss = self.s_total_pixel * binary_crossentropy(K.flatten(y_true), K.flatten(y_pred))
-        kl_loss = - 0.25 * K.sum(1 + self.s_z_log_var - K.square(self.s_z_mean) - K.exp(self.s_z_log_var), axis=-1)
+        kl_loss = - 0 * K.sum(1 + self.s_z_log_var - K.square(self.s_z_mean) - K.exp(self.s_z_log_var), axis=-1)
         vae_loss = K.mean(xent_loss + kl_loss)
         return vae_loss
 
@@ -297,42 +301,12 @@ class VAE():
         utils.gaussian_kernel_matrix, sigmas=tf.constant(sigmas))
 
         xent_loss = self.t_total_pixel * binary_crossentropy(K.flatten(y_true), K.flatten(y_pred))
-        kl_loss = - 0.25 * K.sum(1 + self.t_z_log_var - K.square(self.t_z_mean) - K.exp(self.t_z_log_var), axis=-1)
+        # kl_loss = - 0.25 * K.sum(1 + self.t_z_log_var - K.square(self.t_z_mean) - K.exp(self.t_z_log_var), axis=-1)
         mmd_loss = maximum_mean_discrepancy(self.s_z_mean, self.t_z_mean, kernel=gaussian_kernel)
-        vae_loss = K.mean(xent_loss + mmd_loss)
+        vae_loss = K.mean(xent_loss +  mmd_loss)
         return vae_loss
 
 
-    # def train_target(self, X_s, X_t, n_samples, epochs = 10, batch_size = 128):
-
-    #     # self.s_encoder.trainable = False
-    #     # for l in range(len(self.s_encoder.layers)-1):
-    #     #     w = self.s_encoder.layers[l].get_weights()
-    #     #     self.t_encoder.layers[l].set_weights(w)
-        
-    #     n_batches = n_samples//batch_size
-    #     for e in range(epochs):
-    #         s_l_sum = 0
-    #         t_l_sum = 0
-    #         for batch in range(n_batches):
-    #             idx = np.random.randint(0, X_s.shape[0], batch_size)
-    #             batch_s = X_s[idx]
-
-    #             idx = np.random.randint(0, X_t.shape[0], batch_size)
-    #             batch_t = X_t[idx]
-
-    #             self.s_v_autoencoder.compile(loss = self.s_vae_loss, optimizer='adam')
-    #             s_l = self.s_v_autoencoder.train_on_batch(batch_s, batch_s)
-
-    #             self.t_v_autoencoder.compile(loss= self.t_vae_loss,  optimizer = 'adam')
-    #             t_l = self.t_v_autoencoder.train_on_batch(batch_t, batch_t)
-    #             s_l_sum += s_l
-    #             t_l_sum += t_l
-
-    #             # if batch % 50 == 0:
-    #             print(f"batch: {batch}, source loss: {s_l}, target loss: {t_l} \n")
-
-    #         print(f"\tEpoch: {e}, Avg Source Loss: {s_l_sum/n_batches}, Avg Target Loss: {t_l_sum/n_batches}")
 
 
 if __name__ == '__main__':
@@ -369,7 +343,6 @@ if __name__ == '__main__':
 
     y_s_train = to_categorical(y_s_train)
     y_s_test = to_categorical(y_s_test)
-
     y_t_train = to_categorical(y_t_train)
     y_t_test = to_categorical(y_t_test)
 
@@ -381,49 +354,57 @@ if __name__ == '__main__':
     # intermediate_dim = 512
     batch_size = 128
     latent_dim = 10
-    epochs = 100
-    n_classes = len(np.unique(y_s_train))
+    epochs = 400
+    n_classes = 10
+
     vae = VAE(s_input_shape=s_input_shape, t_input_shape=t_input_shape, n_classes= n_classes, latent_dim=latent_dim)
     vae.s_encoder.summary()
     vae.t_encoder.summary()
     # vae.t_v_autoencoder.summary()
     vae.vae_source_target.summary()
     losses = {'s_output': vae.s_vae_loss, 't_output': vae.t_vae_loss}
-    vae.vae_source_target.compile(loss = losses, optimizer='adam')
-    # hist = vae.vae_source_target.fit([x_s_train, x_t_train], [x_s_train, x_t_train],
-    #                             epochs=epochs,
-    #                             verbose=2,
-    #                             batch_size=batch_size,
-    #                             validation_data=([x_s_test, x_t_test], [x_s_test, x_t_test]))
-    # # plot_model(vae.vae_source_target, to_file='vae_enc_dec.png', show_shapes=True)
+    opt = Adam(lr=0.00001)
+    vae.vae_source_target.compile(loss = losses, optimizer=opt)
+    
+    hist = vae.vae_source_target.fit([x_s_train, x_t_train], [x_s_train, x_t_train],
+                                epochs=epochs,
+                                verbose=2,
+                                batch_size=batch_size,
+                                validation_data=([x_s_test, x_t_test], [x_s_test, x_t_test]))
+    # plot_model(vae.vae_source_target, to_file='vae_enc_dec.png', show_shapes=True)
 
-    # vae.vae_source_target.save_weights('model_weights/vae.h5')
+    vae.vae_source_target.save_weights('model_weights/vae.h5')
+
+
 
     vae.vae_source_target.load_weights('model_weights/vae.h5')
-    # vae.train_target(x_s_train, x_s_train, n_samples)
-    s_enc_cls_model = vae.build_s_enc_cls_model()
-    for layer in s_enc_cls_model.layers:
+
+    vae.build_s_enc_cls_model()
+    for layer in vae.s_enc_cls_model.layers:
         layer.trainable = False
-    s_enc_cls_model.layers[-1].trainable = True
-    s_enc_cls_model.compile(loss='categorical_crossentropy', optimizer='adam')
-    s_enc_cls_model.fit(x_s_train, y_s_train,
-                        epochs = 50,
+
+    vae.classifier.trainable = True
+    vae.s_enc_cls_model.compile(loss='categorical_crossentropy', optimizer='adam')
+    vae.s_enc_cls_model.summary()
+    vae.s_enc_cls_model.fit(x_s_train, y_s_train,
+                        epochs = 100,
                         verbose=2,
                         batch_size=64,
                         validation_data=(x_s_test, y_s_test))
 
-    
+    s_score = vae.s_enc_cls_model.evaluate(x_s_test, y_s_test)
+    print(f'Source Score: {s_score}')
 
-    t_enc_cls_model = vae.build_t_enc_cls_model()
-    t_enc_cls_model.summary()
-    t_enc_cls_model.compile(loss='categorical_crossentropy', optimizer='adam')
-    t_enc_cls_model.fit(x_t_test, y_t_test,
-                        epochs=50,
+    vae.build_t_enc_cls_model()
+    vae.t_enc_cls_model.summary()
+    vae.t_enc_cls_model.compile(loss='categorical_crossentropy', optimizer='adam')
+    vae.t_enc_cls_model.fit(x_t_test, y_t_test,
+                        epochs=5,
                         verbose = 2,
                         batch_size=64,
                         validation_data=(x_t_train, y_t_train))
 
-    score = t_enc_cls_model.evaluate(x_t_train, y_t_train)
-    print(f"sore: {score}")
+    t_score = vae.t_enc_cls_model.evaluate(x_t_train, y_t_train)
+    print(f"sore: {t_score}")
 
 
