@@ -46,13 +46,13 @@ class AutoEncoder_Mnist():
         x = UpSampling2D((2,2))(x)
         x = Conv2D(16, (3,3), padding = 'same', strides = (1,1), activation = 'relu')(x)
         x = UpSampling2D((2,2))(x)
-        outputs = Conv2D(self.s_input_shape[2], (3,3), padding = 'same', strides = (1,1), activation = 'sigmoid', name ='s_output')(x)
+        outputs = Conv2D(self.input_shape[2], (3,3), padding = 'same', strides = (1,1), activation = 'sigmoid', name ='s_output')(x)
         return outputs
 
 class AutoEncoder_USPS():
     def __init__(self, input_shape, latent_dim=100):
         self.input_shape = input_shape
-        self.latent_dim
+        self.latent_dim = latent_dim
 
     def encoder_layers(self,x):
 
@@ -77,7 +77,7 @@ class AutoEncoder_USPS():
         x = UpSampling2D((2,2))(x)
         x = Conv2D(16, (3,3), padding = 'same', strides = (1,1), activation = 'relu')(x)
         x = UpSampling2D((2,2))(x)
-        outputs = Conv2D(self.t_input_shape[2], (3,3), padding = 'same', strides = (1,1), activation = 'linear', name = 't_output')(x)
+        outputs = Conv2D(self.input_shape[2], (3,3), padding = 'same', strides = (1,1), activation = 'linear', name = 't_output')(x)
         return outputs
 
 
