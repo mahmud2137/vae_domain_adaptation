@@ -7,9 +7,11 @@ from keras.layers import Lambda, Reshape, Input, Dense, Conv2D, MaxPool2D, Flatt
 from keras.models import Model, Sequential
 from keras.datasets import mnist
 from keras.optimizers import Adam
+from keras.callbacks import EarlyStopping
 from keras.losses import mse, binary_crossentropy
 from keras.utils import plot_model, to_categorical
 from keras import backend as K
+from sklearn.metrics import accuracy_score, classification_report
 from sklearn.decomposition import PCA
 import tensorflow as tf
 import utils
@@ -170,6 +172,7 @@ class VAE():
         # self.s_build_model()
         # self.t_build_model()
         self.build_st_model()
+        # self.build_s_autoencoder()
 
     def s_encoder_layers(self,x):
         
@@ -178,12 +181,13 @@ class VAE():
         x = Conv2D(32, (2,2), padding='same', strides=(1,1), activation='relu')(x)
         x = MaxPool2D(pool_size=(2,2))(x)
         x = Flatten()(x)
-        self.s_z_mean = Dense(self.latent_dim, name='s_z_mean')(x)
-        self.s_z_log_var = Dense(self.latent_dim, name='s_z_log_var')(x) 
+        # self.s_z_mean = Dense(self.latent_dim, name='s_z_mean')(x)
+        # self.s_z_log_var = Dense(self.latent_dim, name='s_z_log_var')(x) 
         # use reparameterization trick to push the sampling out as input
         # note that "output_shape" isn't necessary with the TensorFlow backend
-        self.s_z = Lambda(sampling, output_shape=(self.latent_dim,), name='s_z')([self.s_z_mean, self.s_z_log_var])
-        return self.s_z 
+        # self.s_z = Lambda(sampling, output_shape=(self.latent_dim,), name='s_z')([self.s_z_mean, self.s_z_log_var])
+        self.s_encoded = Dense(self.latent_dim, activation='relu')(x)
+        return self.s_encoded
 
     def s_decoder_layers(self,x):
         # self.s_latent_inputs = Input(shape=(self.latent_dim,), name='s_z_sampling')
@@ -193,7 +197,7 @@ class VAE():
         x = UpSampling2D((2,2))(x)
         x = Conv2D(16, (3,3), padding = 'same', strides = (1,1), activation = 'relu')(x)
         x = UpSampling2D((2,2))(x)
-        s_outputs = Conv2D(self.s_input_shape[2], (3,3), padding = 'same', strides = (1,1), activation = 'linear', name ='s_output')(x)
+        s_outputs = Conv2D(self.s_input_shape[2], (3,3), padding = 'same', strides = (1,1), activation = 'sigmoid', name ='s_output')(x)
         return s_outputs
 
     
@@ -204,12 +208,13 @@ class VAE():
         x = Conv2D(32, (2,2), padding='same', strides=(1,1), activation='relu')(x)
         x = MaxPool2D(pool_size=(2,2))(x)
         x = Flatten()(x)
-        self.t_z_mean = Dense(self.latent_dim, name='t_z_mean')(x)
-        self.t_z_log_var = Dense(self.latent_dim, name='t_z_log_var')(x) 
-        # use reparameterization trick to push the sampling out as input
-        # note that "output_shape" isn't necessary with the TensorFlow backend
-        self.t_z = Lambda(sampling, output_shape=(self.latent_dim,), name='z')([self.t_z_mean, self.t_z_log_var])
-        return self.t_z 
+        # self.t_z_mean = Dense(self.latent_dim, name='t_z_mean')(x)
+        # self.t_z_log_var = Dense(self.latent_dim, name='t_z_log_var')(x) 
+        # # use reparameterization trick to push the sampling out as input
+        # # note that "output_shape" isn't necessary with the TensorFlow backend
+        # self.t_z = Lambda(sampling, output_shape=(self.latent_dim,), name='z')([self.t_z_mean, self.t_z_log_var])
+        self.t_encoded  = Dense(self.latent_dim, activation='relu')(x)
+        return self.t_encoded
 
     def t_decoder_layers(self,x):
         # self.t_latent_inputs = Input(shape=(self.latent_dim,), name='z_sampling')
@@ -226,7 +231,7 @@ class VAE():
 
         model = Sequential()
         model.add(Dense(self.latent_dim, activation='relu', input_dim=self.latent_dim))
-        model.add(Dense(20, activation='relu'))
+        # model.add(Dense(40, activation='relu'))
         model.add(Dense(20, activation='relu'))
         model.add(Dense(self.n_classes, activation='softmax'))
 
@@ -250,47 +255,58 @@ class VAE():
     #     self.t_decoder = Model(self.t_latent_inputs, t_output_layer, name = 't_decoder')
     #     self.t_v_autoencoder = Model(t_input_layer, self.t_decoder(self.t_encoder(t_input_layer)[2]), name='v_autoencoder')
 
+    def build_s_autoencoder(self):
+
+        s_input_layer = Input(shape=self.s_input_shape, name = 's_input')
+        s_latent_space = self.s_encoder_layers(s_input_layer)
+        s_output_layer = self.s_decoder_layers(s_latent_space)
+
+        self.s_encoder = Model(s_input_layer, self.s_encoded , name = 's_encoder')
+        
+        self.s_autoencoder = Model(s_input_layer, s_output_layer)
+
+
     def build_st_model(self):
         #building source vae
         s_input_layer = Input(shape=self.s_input_shape, name = 's_input')
         s_latent_space = self.s_encoder_layers(s_input_layer)
         s_output_layer = self.s_decoder_layers(s_latent_space)
 
-        self.s_encoder = Model(s_input_layer, [self.s_z_mean, self.s_z_log_var, self.s_z], name = 's_encoder')
+        self.s_encoder = Model(s_input_layer, s_latent_space , name = 's_encoder')
         # self.s_decoder = Model(s_latent_space, s_output_layer, name = 's_decoder')
-        # self.s_v_autoencoder = Model(s_input_layer, self.s_decoder(self.s_encoder(s_input_layer)[2]), name='v_autoencoder')
+        # self.s_v_autoencoder = Model(s_input_layer, self.s_decoder(self.s_encoder(s_input_layer)), name='v_autoencoder')
         self.dummy_layer = Dense(self.latent_dim, activation=zero_activation)(s_latent_space)
         
         #building target vae
         t_input_layer = Input(shape=self.t_input_shape, name = 't_input')
         t_latent_space = self.t_encoder_layers(t_input_layer)
         
-        self.t_encoder = Model(t_input_layer, [self.t_z_mean, self.t_z_log_var, self.t_z], name = 't_encoder')
+        self.t_encoder = Model(t_input_layer, self.t_encoded, name = 't_encoder')
         conc = concatenate([self.dummy_layer, t_latent_space])
         t_output_layer = self.t_decoder_layers(conc)
 
         # self.t_decoder = Model(conc, t_output_layer, name = 't_decoder')
-        # self.t_v_autoencoder = Model(t_input_layer, self.t_decoder(self.t_encoder(t_input_layer)[2]), name='v_autoencoder')
+        # self.t_v_autoencoder = Model(t_input_layer, self.t_decoder(self.t_encoder(t_input_layer)), name='v_autoencoder')
         self.vae_source_target = Model([s_input_layer, t_input_layer], [s_output_layer, t_output_layer])
 
     def build_s_enc_cls_model(self):
         # Building The model with Source Encoder and Classifier
         if self.classifier is None:
             self.build_classifier()
-        self.s_enc_cls_model = Model(input=self.s_encoder.input, output=self.classifier(self.s_encoder.output[2]))
+        self.s_enc_cls_model = Model(input=self.s_encoder.input, output=self.classifier(self.s_encoder.output))
         
 
     def build_t_enc_cls_model(self):
         # Building The model with Target Encoder and Classifier
         # Assuming The classifier is already built and trained by the source data
-        self.t_enc_cls_model = Model(input=self.t_encoder.input, output=self.classifier(self.t_encoder.output[2]))
+        self.t_enc_cls_model = Model(input=self.t_encoder.input, output=self.classifier(self.t_encoder.output))
         # return t_enc_cls_model
 
     def s_vae_loss(self, y_true, y_pred):
         xent_loss = self.s_total_pixel * binary_crossentropy(K.flatten(y_true), K.flatten(y_pred))
-        kl_loss = - 0 * K.sum(1 + self.s_z_log_var - K.square(self.s_z_mean) - K.exp(self.s_z_log_var), axis=-1)
-        vae_loss = K.mean(xent_loss + kl_loss)
-        return vae_loss
+        # kl_loss = - 0 * K.sum(1 + self.s_z_log_var - K.square(self.s_z_mean) - K.exp(self.s_z_log_var), axis=-1)
+        # vae_loss = K.mean(xent_loss + kl_loss)
+        return xent_loss
 
     def t_vae_loss(self, y_true, y_pred):
         sigmas = [
@@ -302,7 +318,7 @@ class VAE():
 
         xent_loss = self.t_total_pixel * binary_crossentropy(K.flatten(y_true), K.flatten(y_pred))
         # kl_loss = - 0.25 * K.sum(1 + self.t_z_log_var - K.square(self.t_z_mean) - K.exp(self.t_z_log_var), axis=-1)
-        mmd_loss = maximum_mean_discrepancy(self.s_z_mean, self.t_z_mean, kernel=gaussian_kernel)
+        mmd_loss = maximum_mean_discrepancy(self.s_encoded, self.t_encoded, kernel=gaussian_kernel)
         vae_loss = K.mean(xent_loss +  mmd_loss)
         return vae_loss
 
@@ -325,12 +341,12 @@ if __name__ == '__main__':
     #Loading USPS dataset
     
     with h5py.File('usps.h5', 'r') as hf:
-            train = hf.get('train')
-            x_t_train = train.get('data')[:].reshape(-1,16,16,1)
-            y_t_train = train.get('target')[:]
-            test = hf.get('test')
-            x_t_test = test.get('data')[:].reshape(-1,16,16,1)
-            y_t_test = test.get('target')[:]
+        train = hf.get('train')
+        x_t_train = train.get('data')[:].reshape(-1,16,16,1)
+        y_t_train = train.get('target')[:]
+        test = hf.get('test')
+        x_t_test = test.get('data')[:].reshape(-1,16,16,1)
+        y_t_test = test.get('target')[:]
 
     x_s_train , y_s_train = sort_by_class_label(x_s_train, y_s_train)
     x_t_train , y_t_train = sort_by_class_label(x_t_train, y_t_train)
@@ -353,31 +369,74 @@ if __name__ == '__main__':
 
     # intermediate_dim = 512
     batch_size = 128
-    latent_dim = 10
-    epochs = 400
+    latent_dim = 100
+    epochs = 200
     n_classes = 10
 
     vae = VAE(s_input_shape=s_input_shape, t_input_shape=t_input_shape, n_classes= n_classes, latent_dim=latent_dim)
     vae.s_encoder.summary()
     vae.t_encoder.summary()
-    # vae.t_v_autoencoder.summary()
+    # vae.s_autoencoder.summary()
+    # opt = Adam(lr=0.001)
+    # vae.s_autoencoder.compile(loss = 'binary_crossentropy' ,optimizer='adadelta')
+    # vae.s_autoencoder.fit(x_s_train, x_s_train,
+    #                     epochs=300,
+    #                     verbose = 2,
+    #                     batch_size=128,
+    #                     validation_data=(x_s_test, x_s_test))
+    # vae.s_autoencoder.save_weights('model_weights/s_ae.h5')
+
+    # vae.s_autoencoder.load_weights('model_weights/s_ae.h5')
+
+
+
+    # vae.build_s_enc_cls_model()
+    # for layer in vae.s_enc_cls_model.layers:
+    #     layer.trainable = False
+
+    # vae.classifier.trainable = True
+    # opt = Adam(lr=0.0001)
+    # clbck = EarlyStopping(patience=5)
+    # vae.s_enc_cls_model.compile(loss='categorical_crossentropy', optimizer=opt)
+    # vae.s_enc_cls_model.summary()
+
+    # vae.s_enc_cls_model.fit(x_s_train, y_s_train,
+    #                     epochs = 30,
+    #                     verbose=2,
+    #                     batch_size=64,
+    #                     callbacks=[clbck],
+    #                     validation_data=(x_s_test, y_s_test))
+
+    # s_pred_cls = vae.s_enc_cls_model.predict(x_s_test)
+   
+    # s_score = accuracy_score(y_s_test.argmax(1), s_pred_cls.argmax(1))
+    
+    # print(f'Source Score: {s_score}')
+
+   
     vae.vae_source_target.summary()
     losses = {'s_output': vae.s_vae_loss, 't_output': vae.t_vae_loss}
-    opt = Adam(lr=0.00001)
+    opt = Adam(lr=0.0001)
     vae.vae_source_target.compile(loss = losses, optimizer=opt)
     
-    hist = vae.vae_source_target.fit([x_s_train, x_t_train], [x_s_train, x_t_train],
-                                epochs=epochs,
-                                verbose=2,
-                                batch_size=batch_size,
-                                validation_data=([x_s_test, x_t_test], [x_s_test, x_t_test]))
+    # hist = vae.vae_source_target.fit([x_s_train, x_t_train], [x_s_train, x_t_train],
+    #                             epochs=epochs,
+    #                             verbose=2,
+    #                             batch_size=batch_size,
+    #                             validation_data=([x_s_test, x_t_test], [x_s_test, x_t_test]))
+
     # plot_model(vae.vae_source_target, to_file='vae_enc_dec.png', show_shapes=True)
 
-    vae.vae_source_target.save_weights('model_weights/vae.h5')
-
+    # vae.vae_source_target.save_weights('model_weights/vae.h5')
+  
 
 
     vae.vae_source_target.load_weights('model_weights/vae.h5')
+
+    recons = vae.vae_source_target.predict([x_s_test, x_t_test])[0]
+    plt.imshow(recons[3253,:,:,0])
+    plt.savefig('sample.png')
+    plt.show()
 
     vae.build_s_enc_cls_model()
     for layer in vae.s_enc_cls_model.layers:
@@ -386,25 +445,34 @@ if __name__ == '__main__':
     vae.classifier.trainable = True
     vae.s_enc_cls_model.compile(loss='categorical_crossentropy', optimizer='adam')
     vae.s_enc_cls_model.summary()
-    vae.s_enc_cls_model.fit(x_s_train, y_s_train,
-                        epochs = 100,
-                        verbose=2,
-                        batch_size=64,
-                        validation_data=(x_s_test, y_s_test))
+    # vae.s_enc_cls_model.fit(x_s_train, y_s_train,
+    #                     epochs = 100,
+    #                     verbose=2,
+    #                     batch_size=64,
+    #                     validation_data=(x_s_test, y_s_test))
 
-    s_score = vae.s_enc_cls_model.evaluate(x_s_test, y_s_test)
+    s_pred = vae.s_enc_cls_model.predict(x_s_test)
+    s_score = accuracy_score(y_s_test.argmax(1), s_pred.argmax(1))
     print(f'Source Score: {s_score}')
+
+
 
     vae.build_t_enc_cls_model()
     vae.t_enc_cls_model.summary()
     vae.t_enc_cls_model.compile(loss='categorical_crossentropy', optimizer='adam')
+
+    # t_pred = vae.t_enc_cls_model.predict(x_t_train)
+    # t_score = accuracy_score(y_t_train.argmax(1), t_pred.argmax(1))
+    # print(f"Target sore, Before Fine tune: {t_score}")
+    
     vae.t_enc_cls_model.fit(x_t_test, y_t_test,
-                        epochs=5,
+                        epochs=1,
                         verbose = 2,
                         batch_size=64,
                         validation_data=(x_t_train, y_t_train))
 
-    t_score = vae.t_enc_cls_model.evaluate(x_t_train, y_t_train)
-    print(f"sore: {t_score}")
+    t_pred = vae.t_enc_cls_model.predict(x_t_train)
+    t_score = accuracy_score(y_t_train.argmax(1), t_pred.argmax(1))
+    print(f"Target score, After Fine tune: {t_score}")
 
 
