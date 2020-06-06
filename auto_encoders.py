@@ -46,7 +46,7 @@ class AutoEncoder_Mnist():
         x = UpSampling2D((2,2))(x)
         x = Conv2D(16, (3,3), padding = 'same', strides = (1,1), activation = 'relu')(x)
         x = UpSampling2D((2,2))(x)
-        outputs = Conv2D(self.input_shape[2], (3,3), padding = 'same', strides = (1,1), activation = 'sigmoid', name ='s_output')(x)
+        outputs = Conv2D(self.input_shape[2], (3,3), padding = 'same', strides = (1,1), activation = 'sigmoid', name ='M_output')(x)
         return outputs
 
 class AutoEncoder_USPS():
@@ -61,11 +61,7 @@ class AutoEncoder_USPS():
         x = Conv2D(32, (2,2), padding='same', strides=(1,1), activation='relu')(x)
         x = MaxPool2D(pool_size=(2,2))(x)
         x = Flatten()(x)
-        # self.t_z_mean = Dense(self.latent_dim, name='t_z_mean')(x)
-        # self.t_z_log_var = Dense(self.latent_dim, name='t_z_log_var')(x) 
-        # # use reparameterization trick to push the sampling out as input
-        # # note that "output_shape" isn't necessary with the TensorFlow backend
-        # self.t_z = Lambda(sampling, output_shape=(self.latent_dim,), name='z')([self.t_z_mean, self.t_z_log_var])
+
         self.encoded  = Dense(self.latent_dim, activation='relu')(x)
         return self.encoded
 
@@ -77,7 +73,66 @@ class AutoEncoder_USPS():
         x = UpSampling2D((2,2))(x)
         x = Conv2D(16, (3,3), padding = 'same', strides = (1,1), activation = 'relu')(x)
         x = UpSampling2D((2,2))(x)
-        outputs = Conv2D(self.input_shape[2], (3,3), padding = 'same', strides = (1,1), activation = 'linear', name = 't_output')(x)
+        outputs = Conv2D(self.input_shape[2], (3,3), padding = 'same', strides = (1,1), activation = 'linear', name = 'U_output')(x)
         return outputs
 
 
+class AutoEncoder_SVHN():
+    def __init__(self, input_shape, latent_dim=100):
+        self.input_shape = input_shape
+        self.latent_dim = latent_dim
+
+    def encoder_layers(self,x):
+
+        x = Conv2D(16, (3,3), padding = 'same', strides = (1,1), activation = 'relu')(x)
+        x = MaxPool2D(pool_size=(2,2))(x)
+        x = Conv2D(32, (2,2), padding='same', strides=(1,1), activation='relu')(x)
+        x = MaxPool2D(pool_size=(2,2))(x)
+        x = Conv2D(32, (2,2), padding='same', strides=(1,1), activation='relu')(x)
+        x = MaxPool2D(pool_size=(2,2))(x)
+        x = Flatten()(x)
+        self.encoded  = Dense(self.latent_dim, activation='relu')(x)
+        return self.encoded
+
+    def decoder_layers(self,x):
+
+        x = Dense(4*4*32, activation='relu')(x)
+        x = Reshape((4,4,32))(x)
+        x = Conv2D(32, (2,2), padding = 'same', strides = (1,1), activation = 'relu')(x)
+        x = UpSampling2D((2,2))(x)
+        x = Conv2D(32, (2,2), padding = 'same', strides = (1,1), activation = 'relu')(x)
+        x = UpSampling2D((2,2))(x)
+        x = Conv2D(16, (3,3), padding = 'same', strides = (1,1), activation = 'relu')(x)
+        x = UpSampling2D((2,2))(x)
+        outputs = Conv2D(self.input_shape[2], (3,3), padding = 'same', strides = (1,1), activation = 'linear', name = 'S_output')(x)
+        return outputs
+
+class AutoEncoder_SYN():
+    def __init__(self, input_shape, latent_dim=100):
+        self.input_shape = input_shape
+        self.latent_dim = latent_dim
+
+    def encoder_layers(self,x):
+
+        x = Conv2D(16, (3,3), padding = 'same', strides = (1,1), activation = 'relu')(x)
+        x = MaxPool2D(pool_size=(2,2))(x)
+        x = Conv2D(32, (2,2), padding='same', strides=(1,1), activation='relu')(x)
+        x = MaxPool2D(pool_size=(2,2))(x)
+        x = Conv2D(32, (2,2), padding='same', strides=(1,1), activation='relu')(x)
+        x = MaxPool2D(pool_size=(2,2))(x)
+        x = Flatten()(x)
+        self.encoded  = Dense(self.latent_dim, activation='relu')(x)
+        return self.encoded
+
+    def decoder_layers(self,x):
+
+        x = Dense(4*4*32, activation='relu')(x)
+        x = Reshape((4,4,32))(x)
+        x = Conv2D(32, (2,2), padding = 'same', strides = (1,1), activation = 'relu')(x)
+        x = UpSampling2D((2,2))(x)
+        x = Conv2D(32, (2,2), padding = 'same', strides = (1,1), activation = 'relu')(x)
+        x = UpSampling2D((2,2))(x)
+        x = Conv2D(16, (3,3), padding = 'same', strides = (1,1), activation = 'relu')(x)
+        x = UpSampling2D((2,2))(x)
+        outputs = Conv2D(self.input_shape[2], (3,3), padding = 'same', strides = (1,1), activation = 'linear', name = 'Sy_output')(x)
+        return outputs

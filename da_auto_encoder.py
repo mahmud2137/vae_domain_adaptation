@@ -14,6 +14,9 @@ from keras import backend as K
 from sklearn.metrics import accuracy_score, classification_report
 from sklearn.decomposition import PCA
 import tensorflow as tf
+from scipy.io import loadmat
+from itertools import permutations
+
 import utils
 from functools import partial
 import h5py
@@ -23,6 +26,7 @@ import matplotlib.pyplot as plt
 import argparse
 import os
 from auto_encoders import *
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
 
 
 def sampling(args):
@@ -118,6 +122,7 @@ def upsample_by_class(x_s,y_s,x_t,y_t):
     x_t_ups = np.array([])
     y_t_ups = np.array([])
     for cl in np.unique(y_s):
+        # print(f"class:  {cl}")
         s_args = np.argwhere(y_s == cl).flatten()
         t_args = np.argwhere(y_t == cl).flatten()
         if len(s_args) >= len(t_args):
@@ -306,7 +311,7 @@ class S_T_AE():
         xent_loss = self.t_total_pixel * binary_crossentropy(K.flatten(y_true), K.flatten(y_pred))
         # kl_loss = - 0.25 * K.sum(1 + self.t_z_log_var - K.square(self.t_z_mean) - K.exp(self.t_z_log_var), axis=-1)
         mmd_loss = maximum_mean_discrepancy(self.s_ae.encoded, self.t_ae.encoded, kernel=gaussian_kernel)
-        vae_loss = K.mean(xent_loss +  mmd_loss)
+        vae_loss = K.mean(xent_loss +  0.25 * mmd_loss)
         return vae_loss
 
 
@@ -314,40 +319,101 @@ class S_T_AE():
 
 if __name__ == '__main__':
 
+    X_train = {}
+    X_test = {}
+    y_train = {}
+    y_test = {}
+    d_sets = ['M', 'U', 'S', 'Sy'] #M for Mnist, U for USPS, S for SVHN, 'Sy' for Synthetic dataset
     #Loading Mnist data
-    (x_s_train, y_s_train), (x_s_test, y_s_test) = mnist.load_data()
+    (x_mn_train, y_mn_train), (x_mn_test, y_mn_test) = mnist.load_data()
 
-    original_dim = x_s_train.shape[1] * x_s_train.shape[2]
-    # x_s_train = np.reshape(x_s_train, [-1, original_dim])
-    # x_s_test = np.reshape(x_s_test, [-1, original_dim])
-    x_s_train = np.expand_dims(x_s_train, axis=-1)
-    x_s_test = np.expand_dims(x_s_test, axis=-1)
-    x_s_train = x_s_train.astype('float32') / 255
-    x_s_test = x_s_test.astype('float32') / 255
+    original_dim = x_mn_train.shape[1] * x_mn_train.shape[2]
+    # x_mn_train = np.reshape(x_mn_train, [-1, original_dim])
+    # x_mn_test = np.reshape(x_mn_test, [-1, original_dim])
+    x_mn_train = np.expand_dims(x_mn_train, axis=-1)
+    x_mn_test = np.expand_dims(x_mn_test, axis=-1)
+    X_train['M'] = x_mn_train.astype('float32') / 255
+    X_test['M'] = x_mn_test.astype('float32') / 255
+    y_train['M'] = y_mn_train
+    y_test['M'] = y_mn_test
+
+    x_mn_train = None
+    x_mn_test = None
 
     #Loading USPS dataset
     
     with h5py.File('usps.h5', 'r') as hf:
         train = hf.get('train')
-        x_t_train = train.get('data')[:].reshape(-1,16,16,1)
-        y_t_train = train.get('target')[:]
+        X_train['U'] = train.get('data')[:].reshape(-1,16,16,1)
+        y_train['U'] = train.get('target')[:]
         test = hf.get('test')
-        x_t_test = test.get('data')[:].reshape(-1,16,16,1)
-        y_t_test = test.get('target')[:]
+        X_test['U'] = test.get('data')[:].reshape(-1,16,16,1)
+        y_test['U'] = test.get('target')[:]
 
+    train = None
+
+    #Loading svhn dataset
+    svhn_train = loadmat('svhn/train_32x32.mat')
+    x_sv_train = svhn_train['X']
+    X_train['S'] = np.moveaxis(x_sv_train, -1, 0)
+    y_sv_train = svhn_train['y'].reshape(-1)
+
+    svhn_test = loadmat('svhn/test_32x32.mat')
+    x_sv_test = svhn_test['X']
+    X_test['S'] = np.moveaxis(x_sv_test, -1, 0)
+
+    y_sv_test = svhn_test['y'].reshape(-1)
+    y_train['S'] = np.where(y_sv_train==10, 0, y_sv_train)
+    y_test['S'] = np.where(y_sv_test==10, 0, y_sv_test)
+
+    x_sv_train = None
+    x_sv_test = None
+    svhn_train = None
+    svhn_test = None
+    # plt.imshow(X_train['S'][1206,:,:,:])
+    # plt.show()
+
+    #Loading Sync dataset
+    sync_train = loadmat('syn/synth_train_32x32.mat')
+    X_train['Sy'] = np.moveaxis(sync_train['X'], -1, 0)
+    y_train['Sy'] = sync_train['y'].reshape(-1)
+
+    sync_test = loadmat('syn/synth_test_32x32.mat')
+    X_test['Sy'] = np.moveaxis(sync_test['X'], -1, 0)
+    y_test['Sy'] = sync_test['y'].reshape(-1)    
+
+    sync_train = None
+    sync_test = None
+
+    auto_encoder_dict = dict(zip(d_sets,[AutoEncoder_Mnist, AutoEncoder_USPS, AutoEncoder_SVHN, AutoEncoder_SYN]))
+
+    # x_s_train, y_s_train, x_s_test, y_s_test = x_mn_train, y_mn_train, x_mn_test, y_mn_test
+    # x_t_train, y_t_train, x_t_test, y_t_test = x_sv_train, y_sv_train, x_sv_test, y_sv_test
+
+    # for source, target in permutations(d_sets, 2): 
+    source = 'Sy'
+    target = 'M'
+
+    x_s_train, y_s_train, x_s_test, y_s_test = X_train[source], y_train[source], X_test[source], y_test[source]
+    x_t_train, y_t_train, x_t_test, y_t_test = X_train[target], y_train[target], X_test[target], y_test[target]
+
+    print(y_s_train.shape, y_t_train.shape)
     x_s_train , y_s_train = sort_by_class_label(x_s_train, y_s_train)
     x_t_train , y_t_train = sort_by_class_label(x_t_train, y_t_train)
 
     x_s_test , y_s_test = sort_by_class_label(x_s_test, y_s_test)
     x_t_test , y_t_test = sort_by_class_label(x_t_test, y_t_test)
 
+    
     x_s_train, y_s_train, x_t_train, y_t_train = upsample_by_class(x_s_train, y_s_train, x_t_train, y_t_train)
     x_s_test, y_s_test, x_t_test, y_t_test = upsample_by_class(x_s_test, y_s_test, x_t_test, y_t_test)       
 
-    y_s_train = to_categorical(y_s_train)
-    y_s_test = to_categorical(y_s_test)
-    y_t_train = to_categorical(y_t_train)
-    y_t_test = to_categorical(y_t_test)
+    y_s_train = to_categorical(y_s_train, num_classes=10)
+    y_s_test = to_categorical(y_s_test, num_classes=10)
+    y_t_train = to_categorical(y_t_train, num_classes=10)
+    y_t_test = to_categorical(y_t_test, num_classes=10)
+
+    # print(f"x_s_train: {x_s_train.shape}, x_t_train, {x_t_train.shape}")
 
     # network parameters
     s_input_shape = x_s_train.shape[1:]
@@ -357,11 +423,11 @@ if __name__ == '__main__':
     # intermediate_dim = 512
     batch_size = 128
     latent_dim = 100
-    epochs = 200
+    epochs = 50
     n_classes = 10
 
-    s_ae = AutoEncoder_Mnist(s_input_shape, latent_dim)
-    t_ae = AutoEncoder_USPS(t_input_shape, latent_dim)
+    s_ae = auto_encoder_dict[source](s_input_shape, latent_dim)
+    t_ae = auto_encoder_dict[target](t_input_shape, latent_dim)
 
     stae = S_T_AE(s_ae, t_ae, n_classes= n_classes, latent_dim=latent_dim)
     stae.s_encoder.summary()
@@ -370,10 +436,10 @@ if __name__ == '__main__':
 
     stae.ae_source_target.summary()
     
-    losses = {'s_output': stae.s_ae_loss, 't_output': stae.t_ae_loss}
-    opt = Adam(lr=0.0001)
+    losses = {f'{source}_output': stae.s_ae_loss, f'{target}_output': stae.t_ae_loss}
+    opt = Adam(lr=0.00001)
     stae.ae_source_target.compile(loss = losses, optimizer=opt)
-    # plot_model(stae.ae_source_target, to_file='ae_enc_dec.png', show_shapes=True)
+    plot_model(stae.ae_source_target, to_file='ae_enc_dec.png', show_shapes=True)
 
     
     hist = stae.ae_source_target.fit([x_s_train, x_t_train], [x_s_train, x_t_train],
@@ -383,52 +449,53 @@ if __name__ == '__main__':
                                 validation_data=([x_s_test, x_t_test], [x_s_test, x_t_test]))
 
 
-    # vae.vae_source_target.save_weights('model_weights/vae.h5')
-  
+    stae.ae_source_target.save_weights(f'model_weights/ae_{source}_to_{target}.h5')
 
-    '''
-    vae.vae_source_target.load_weights('model_weights/vae.h5')
 
-    recons = vae.vae_source_target.predict([x_s_test, x_t_test])[0]
-    plt.imshow(recons[3253,:,:,0])
-    plt.savefig('sample.png')
-    plt.show()
+    stae.ae_source_target.load_weights(f'model_weights/ae_{source}_to_{target}.h5')
 
-    vae.build_s_enc_cls_model()
-    for layer in vae.s_enc_cls_model.layers:
+    recons = stae.ae_source_target.predict([x_s_test, x_t_test])[0]
+    # plt.imshow(recons[3253,:,:,0])
+    # plt.savefig('sample.png')
+    # plt.show()
+
+    stae.build_s_enc_cls_model()
+    for layer in stae.s_enc_cls_model.layers:
         layer.trainable = False
 
-    vae.classifier.trainable = True
-    vae.s_enc_cls_model.compile(loss='categorical_crossentropy', optimizer='adam')
-    vae.s_enc_cls_model.summary()
-    # vae.s_enc_cls_model.fit(x_s_train, y_s_train,
-    #                     epochs = 100,
-    #                     verbose=2,
-    #                     batch_size=64,
-    #                     validation_data=(x_s_test, y_s_test))
+    stae.classifier.trainable = True
+    opt = Adam(lr = 0.0001)
+    stae.s_enc_cls_model.compile(loss='categorical_crossentropy', optimizer=opt)
+    stae.s_enc_cls_model.summary()
+    clbck = EarlyStopping(patience=5)
+    stae.s_enc_cls_model.fit(x_s_train, y_s_train,
+                        epochs = 50,
+                        verbose=2,
+                        callbacks= [clbck],
+                        batch_size=64,
+                        validation_data=(x_s_test, y_s_test))
 
-    s_pred = vae.s_enc_cls_model.predict(x_s_test)
+    s_pred = stae.s_enc_cls_model.predict(x_s_test)
     s_score = accuracy_score(y_s_test.argmax(1), s_pred.argmax(1))
-    print(f'Source Score: {s_score}')
+    print(f'Source Score {source} to {target}: {s_score}')
 
 
 
-    vae.build_t_enc_cls_model()
-    vae.t_enc_cls_model.summary()
-    vae.t_enc_cls_model.compile(loss='categorical_crossentropy', optimizer='adam')
+    stae.build_t_enc_cls_model()
+    stae.t_enc_cls_model.summary()
+    stae.t_enc_cls_model.compile(loss='categorical_crossentropy', optimizer='adam')
 
-    # t_pred = vae.t_enc_cls_model.predict(x_t_train)
+    # t_pred = stae.t_enc_cls_model.predict(x_t_train)
     # t_score = accuracy_score(y_t_train.argmax(1), t_pred.argmax(1))
     # print(f"Target sore, Before Fine tune: {t_score}")
     
-    vae.t_enc_cls_model.fit(x_t_test, y_t_test,
-                        epochs=1,
+    stae.t_enc_cls_model.fit(x_t_test, y_t_test,
+                        epochs=5,
                         verbose = 2,
                         batch_size=64,
                         validation_data=(x_t_train, y_t_train))
 
-    t_pred = vae.t_enc_cls_model.predict(x_t_train)
+    t_pred = stae.t_enc_cls_model.predict(x_t_train)
     t_score = accuracy_score(y_t_train.argmax(1), t_pred.argmax(1))
-    print(f"Target score, After Fine tune: {t_score}")
+    print(f"Target score {source} to {target}, After Fine tune: {t_score}")
 
-    '''
