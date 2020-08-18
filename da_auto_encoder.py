@@ -121,6 +121,9 @@ def upsample_by_class(x_s,y_s,x_t,y_t):
     y_s_ups = np.array([])
     x_t_ups = np.array([])
     y_t_ups = np.array([])
+    if len(y_s.shape)>1:
+        y_s = y_s.argmax(axis=1)
+        y_t = y_t.argmax(axis=1)
     for cl in np.unique(y_s):
         # print(f"class:  {cl}")
         s_args = np.argwhere(y_s == cl).flatten()
@@ -133,9 +136,10 @@ def upsample_by_class(x_s,y_s,x_t,y_t):
             x_t_cl_ups = x_t[t_args]
             
             n_diff = s_args.shape[0] - t_args.shape[0]
-            sampled_args =  np.random.choice(t_args.flatten(), n_diff)
-            y_t_cl_ups = np.append(y_t_cl_ups, y_t[sampled_args], axis=0)
-            x_t_cl_ups = np.append(x_t_cl_ups, x_t[sampled_args], axis=0)
+            if len(t_args.flatten()):
+                sampled_args =  np.random.choice(t_args.flatten(), n_diff)
+                y_t_cl_ups = np.append(y_t_cl_ups, y_t[sampled_args], axis=0)
+                x_t_cl_ups = np.append(x_t_cl_ups, x_t[sampled_args], axis=0)
             
 
         elif len(s_args) < len(t_args):
@@ -146,9 +150,10 @@ def upsample_by_class(x_s,y_s,x_t,y_t):
             x_t_cl_ups = x_t[t_args]
             
             n_diff = t_args.shape[0] - s_args.shape[0]
-            sampled_args =  np.random.choice(s_args.flatten(), n_diff)
-            y_s_cl_ups = np.append(y_s_cl_ups, y_s[sampled_args], axis=0)
-            x_s_cl_ups = np.append(x_s_cl_ups, x_s[sampled_args], axis=0)
+            if len(s_args.flatten()):
+                sampled_args =  np.random.choice(s_args.flatten(), n_diff)
+                y_s_cl_ups = np.append(y_s_cl_ups, y_s[sampled_args], axis=0)
+                x_s_cl_ups = np.append(x_s_cl_ups, x_s[sampled_args], axis=0)
 
         if x_s_ups.shape[0] == 0:
             x_s_ups = x_s_cl_ups
@@ -168,10 +173,9 @@ class S_T_AE():
         self.s_input_shape = s_ae.input_shape
         self.latent_dim = latent_dim
         self.n_classes = n_classes
-        self.s_total_pixel = s_input_shape[0] * s_input_shape[1]
-
+        self.s_total_pixel = s_ae.input_shape[0] * s_ae.input_shape[1]
         self.t_input_shape = t_ae.input_shape
-        self.t_total_pixel = t_input_shape[0] * t_input_shape[1]
+        self.t_total_pixel = t_ae.input_shape[0] * t_ae.input_shape[1]
         self.classifier = None
         self.s_ae = s_ae  #Source Auto Encoder
         self.t_ae = t_ae    #Target Auto Encoder
