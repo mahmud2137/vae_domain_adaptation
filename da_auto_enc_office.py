@@ -79,7 +79,7 @@ stae.ae_source_target.summary()
 
 
 # stae.ae_source_target.summary()
-epochs = 2000
+epochs = 200
 losses = {f'{source}_output': stae.s_ae_loss, f'{target}_output': stae.t_ae_loss}
 opt = Adam(lr=0.00001)
 stae.ae_source_target.compile(loss = losses, optimizer=opt)
@@ -96,7 +96,6 @@ hist = stae.ae_source_target.fit([x_s_train, x_t_train], [x_s_train, x_t_train],
 # plt.plot(hist.history['loss'])
 stae.ae_source_target.save_weights(f'model_weights/ae_{source}_to_{target}.h5')
 
-'''
 stae.ae_source_target.load_weights(f'model_weights/ae_{source}_to_{target}.h5')
 
 # recons = stae.ae_source_target.predict([x_s_test, x_t_test])[0]
@@ -144,4 +143,3 @@ stae.t_enc_cls_model.fit(x_t_test, y_t_test,
 t_pred = stae.t_enc_cls_model.predict(x_t_train)
 t_score = accuracy_score(y_t_train.argmax(1), t_pred.argmax(1))
 print(f"Target score {source} to {target}, After Fine tune: {t_score}")
-'''
