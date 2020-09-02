@@ -26,7 +26,7 @@ import matplotlib.pyplot as plt
 import argparse
 import os
 from auto_encoders import *
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
+os.environ["CUDA_VISIBLE_DEVICES"]="2"
 
 
 def sampling(args):
@@ -299,7 +299,7 @@ class S_T_AE():
         # return t_enc_cls_model
 
     def s_ae_loss(self, y_true, y_pred):
-        xent_loss = self.s_total_pixel * binary_crossentropy(K.flatten(y_true), K.flatten(y_pred))
+        xent_loss = binary_crossentropy(K.flatten(y_true), K.flatten(y_pred)) / self.s_total_pixel
         # kl_loss = - 0 * K.sum(1 + self.s_z_log_var - K.square(self.s_z_mean) - K.exp(self.s_z_log_var), axis=-1)
         # vae_loss = K.mean(xent_loss + kl_loss)
         return xent_loss
@@ -312,10 +312,10 @@ class S_T_AE():
         gaussian_kernel = partial(
         utils.gaussian_kernel_matrix, sigmas=tf.constant(sigmas))
 
-        xent_loss = self.t_total_pixel * binary_crossentropy(K.flatten(y_true), K.flatten(y_pred))
+        xent_loss =  binary_crossentropy(K.flatten(y_true), K.flatten(y_pred)) / self.t_total_pixel
         # kl_loss = - 0.25 * K.sum(1 + self.t_z_log_var - K.square(self.t_z_mean) - K.exp(self.t_z_log_var), axis=-1)
         mmd_loss = maximum_mean_discrepancy(self.s_ae.encoded, self.t_ae.encoded, kernel=gaussian_kernel)
-        vae_loss = K.mean(xent_loss +  0.25 * mmd_loss)
+        vae_loss = K.mean(xent_loss +  0.5 * mmd_loss)
         return vae_loss
 
 
@@ -395,7 +395,7 @@ if __name__ == '__main__':
     # x_t_train, y_t_train, x_t_test, y_t_test = x_sv_train, y_sv_train, x_sv_test, y_sv_test
 
     # for source, target in permutations(d_sets, 2): 
-    source = 'Sy'
+    source = 'S'
     target = 'M'
 
     x_s_train, y_s_train, x_s_test, y_s_test = X_train[source], y_train[source], X_test[source], y_test[source]
@@ -441,19 +441,19 @@ if __name__ == '__main__':
     stae.ae_source_target.summary()
     
     losses = {f'{source}_output': stae.s_ae_loss, f'{target}_output': stae.t_ae_loss}
-    opt = Adam(lr=0.00001)
+    opt = Adam(lr=0.0001)
     stae.ae_source_target.compile(loss = losses, optimizer=opt)
     plot_model(stae.ae_source_target, to_file='ae_enc_dec.png', show_shapes=True)
 
     
-    hist = stae.ae_source_target.fit([x_s_train, x_t_train], [x_s_train, x_t_train],
-                                epochs=epochs,
-                                verbose=2,
-                                batch_size=batch_size,
-                                validation_data=([x_s_test, x_t_test], [x_s_test, x_t_test]))
+    # hist = stae.ae_source_target.fit([x_s_train, x_t_train], [x_s_train, x_t_train],
+    #                             epochs=epochs,
+    #                             verbose=2,
+    #                             batch_size=batch_size,
+    #                             validation_data=([x_s_test, x_t_test], [x_s_test, x_t_test]))
 
 
-    stae.ae_source_target.save_weights(f'model_weights/ae_{source}_to_{target}.h5')
+    # stae.ae_source_target.save_weights(f'model_weights/ae_{source}_to_{target}.h5')
 
 
     stae.ae_source_target.load_weights(f'model_weights/ae_{source}_to_{target}.h5')
@@ -469,11 +469,11 @@ if __name__ == '__main__':
 
     stae.classifier.trainable = True
     opt = Adam(lr = 0.0001)
-    stae.s_enc_cls_model.compile(loss='categorical_crossentropy', optimizer=opt)
+    stae.s_enc_cls_model.compile(loss='categorical_crossentropy', optimizer=opt, metrics=['accuracy'])
     stae.s_enc_cls_model.summary()
-    clbck = EarlyStopping(patience=5)
-    stae.s_enc_cls_model.fit(x_s_train, y_s_train,
-                        epochs = 50,
+    clbck = EarlyStopping(patience=15)
+    hist = stae.s_enc_cls_model.fit(x_s_train, y_s_train,
+                        epochs = 1000,
                         verbose=2,
                         callbacks= [clbck],
                         batch_size=64,
@@ -487,19 +487,37 @@ if __name__ == '__main__':
 
     stae.build_t_enc_cls_model()
     stae.t_enc_cls_model.summary()
-    stae.t_enc_cls_model.compile(loss='categorical_crossentropy', optimizer='adam')
+    opt = Adam(lr = 0.000001)
+    stae.t_enc_cls_model.compile(loss='categorical_crossentropy', optimizer=opt, metrics=['accuracy'])
 
     # t_pred = stae.t_enc_cls_model.predict(x_t_train)
     # t_score = accuracy_score(y_t_train.argmax(1), t_pred.argmax(1))
     # print(f"Target sore, Before Fine tune: {t_score}")
     
-    stae.t_enc_cls_model.fit(x_t_test, y_t_test,
-                        epochs=5,
+    hist = stae.t_enc_cls_model.fit(x_t_test, y_t_test,
+                        epochs=1000,
                         verbose = 2,
                         batch_size=64,
                         validation_data=(x_t_train, y_t_train))
-
     t_pred = stae.t_enc_cls_model.predict(x_t_train)
     t_score = accuracy_score(y_t_train.argmax(1), t_pred.argmax(1))
     print(f"Target score {source} to {target}, After Fine tune: {t_score}")
 
+    hist.history
+
+    def save_dict_to_file(dic):
+        f = open(f'hist_{source}_to_{target}.txt','w')
+        f.write(str(dic))
+        f.close()
+
+    save_dict_to_file(hist.history)
+
+    def load_dict_from_file():
+        f = open(f'hist_{source}_to_{target}.txt','r')
+        data=f.read()
+        f.close()
+        return eval(data)
+
+    d = load_dict_from_file()
+    d.keys()
+    plt.plot(hist.history['val_acc'])
