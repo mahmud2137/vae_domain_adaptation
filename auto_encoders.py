@@ -3,7 +3,8 @@ from __future__ import division
 from __future__ import print_function
 
 
-from keras.layers import Lambda, ZeroPadding2D ,Reshape, Input, Dense, Conv2D, MaxPool2D, Flatten, UpSampling2D, concatenate
+from keras.layers import Lambda, Dropout, ZeroPadding2D, ZeroPadding3D, Reshape, Input, Dense, Conv2D, MaxPool2D, Flatten, UpSampling2D, concatenate, Conv3D, MaxPool3D, UpSampling3D, BatchNormalization
+# from keras.layers.core import Dropout
 from keras.models import Model, Sequential
 from keras.datasets import mnist
 from keras.optimizers import Adam
@@ -184,4 +185,103 @@ class AutoEncoder_Office():
         x = Conv2D(32, (3,3), padding = 'same', strides = (1,1), activation = 'relu')(x)
         x = Conv2D(32, (3,3), padding = 'same', strides = (1,1), activation = 'relu')(x)
         outputs = Conv2D(self.input_shape[2], (3,3), padding = 'same', strides = (1,1), activation = 'linear', name = self.output_layer_name)(x)
+        return outputs
+
+
+class AutoEncoder_Radar():
+    def __init__(self, input_shape, output_layer_name, latent_dim=100):
+        self.input_shape = input_shape
+        self.latent_dim = latent_dim
+        self.output_layer_name = output_layer_name
+
+    def encoder_layers(self,x):
+
+        x = Conv3D(16, (3,3,3), padding = 'same' , strides = 1, activation = 'relu')(x)
+        x = Conv3D(16, (3,3,3), padding = 'same' , strides = 1, activation = 'relu')(x)
+        x = BatchNormalization()(x)
+        x = MaxPool3D(pool_size = (2,2,2))(x)
+        # x = Dropout(0.4)(x)
+
+        x = Conv3D(32, (3,3,3), padding = 'same' , strides = 1, activation = 'relu')(x)
+        x = Conv3D(32, (3,3,3), padding = 'same' , strides = 1, activation = 'relu')(x)
+        x = BatchNormalization()(x)
+        x = MaxPool3D(pool_size = (2,2,1))(x)
+        # x = Dropout(0.4)(x)
+
+        x = Conv3D(32, (3,3,3), padding = 'same' , strides = 1, activation = 'relu')(x)
+        x = Conv3D(32, (3,3,3), padding = 'same' , strides = 1, activation = 'relu')(x)
+        x = BatchNormalization()(x)
+        x = MaxPool3D(pool_size = (2,2,1))(x)
+        # x = Dropout(0.4)(x)
+
+        x = Flatten()(x)
+        self.encoded  = Dense(self.latent_dim, activation='relu')(x)
+        return self.encoded
+
+    def decoder_layers(self,x):
+
+        x = Dense(10*7*9*32, activation='relu')(x)
+        x = Reshape((10,7,9,32))(x)
+        x = UpSampling3D((2,2,1))(x)
+        # x = ZeroPadding3D(padding=((0,0),(0,1),(0,0)))(x)
+        x = Conv3D(32, (3,3,3), padding = 'same' , strides = 1, activation = 'relu')(x)
+        x = Conv3D(32, (3,3,3), padding = 'same' , strides = 1, activation = 'relu')(x)
+        x = UpSampling3D((2,2,1))(x)
+        # x = ZeroPadding3D(padding=((0,1),(0,1),(0,0)))(x)
+
+        x = Conv3D(32, (3,3,3), padding = 'same' , strides = 1, activation = 'relu')(x)
+        x = Conv3D(32, (3,3,3), padding = 'same' , strides = 1, activation = 'relu')(x)
+        x = UpSampling3D((2,2,2))(x)
+
+        x = Conv3D(16, (3,3,3), padding = 'same' , strides = 1, activation = 'relu')(x)
+        x = ZeroPadding3D(padding=((0,1),(0,1),(0,1)))(x)
+        outputs = Conv3D(1, (3,3,3), padding = 'same', strides = (1,1,1), activation = 'linear', name = self.output_layer_name)(x)
+        return outputs
+
+class AutoEncoder_Lidar():
+    def __init__(self, input_shape, output_layer_name, latent_dim=100):
+        self.input_shape = input_shape
+        self.latent_dim = latent_dim
+        self.output_layer_name = output_layer_name
+
+    def encoder_layers(self,x):
+
+        x = Conv2D(16, (3,3), padding = 'same' , strides = 1, activation = 'relu')(x)
+        x = Conv2D(16, (3,3), padding = 'same' , strides = 1, activation = 'relu')(x)
+        x = BatchNormalization()(x)
+        x = MaxPool2D(pool_size = (2,2))(x)
+        # x = Dropout(0.4)(x)
+
+        x = Conv2D(32, (3,3), padding = 'same' , strides = 1, activation = 'relu')(x)
+        x = Conv2D(32, (3,3), padding = 'same' , strides = 1, activation = 'relu')(x)
+        x = BatchNormalization()(x)
+        x = MaxPool2D(pool_size = (2,2))(x)
+        # x = Dropout(0.4)(x)
+
+        x = Conv2D(32, (3,3), padding = 'same' , strides = 1, activation = 'relu')(x)
+        x = Conv2D(32, (3,3), padding = 'same' , strides = 1, activation = 'relu')(x)
+        x = BatchNormalization()(x)
+        x = MaxPool2D(pool_size = (1,2))(x)
+        # x = Dropout(0.4)(x)
+
+        x = Flatten()(x)
+        self.encoded  = Dense(self.latent_dim, activation='relu')(x)
+        return self.encoded
+
+    def decoder_layers(self,x):
+
+        x = Dense(15*20*32, activation='relu')(x)
+        x = Reshape((15,20,32))(x)
+        x = UpSampling2D((1,2))(x)
+        x = Conv2D(32, (3,3), padding = 'same' , strides = 1, activation = 'relu')(x)
+        # x = BatchNormalization()(x)
+        x = Conv2D(32, (3,3), padding = 'same' , strides = 1, activation = 'relu')(x)
+        # x = ZeroPadding2D(padding=((0,1),(1,1)))(x)
+        x = UpSampling2D((2,2))(x)
+
+        x = Conv2D(32, (3,3), padding = 'same' , strides = 1, activation = 'relu')(x)
+        x = Conv2D(32, (3,3), padding = 'same' , strides = 1, activation = 'relu')(x)
+        x = UpSampling2D((2,2))(x)
+        x = Conv2D(16, (3,3), padding = 'same' , strides = 1, activation = 'relu')(x)
+        outputs = Conv2D(1, (3,3), padding = 'same', strides = (1,1), activation = 'linear', name = self.output_layer_name)(x)
         return outputs
