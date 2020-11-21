@@ -263,8 +263,8 @@ class AutoEncoder_Lidar():
         x = BatchNormalization()(x)
         x = MaxPool2D(pool_size = (1,2))(x)
         # x = Dropout(0.4)(x)
-
         x = Flatten()(x)
+        
         self.encoded  = Dense(self.latent_dim, activation='relu')(x)
         return self.encoded
 

@@ -10,6 +10,7 @@ from keras.optimizers import Adam
 from keras.callbacks import EarlyStopping
 from keras.losses import mse, binary_crossentropy
 from keras.utils import plot_model, to_categorical
+from sklearn.model_selection import train_test_split
 from keras import backend as K
 from sklearn.metrics import accuracy_score, classification_report
 from sklearn.decomposition import PCA
@@ -26,7 +27,7 @@ import matplotlib.pyplot as plt
 import argparse
 import os
 from auto_encoders import *
-os.environ["CUDA_VISIBLE_DEVICES"]="2"
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
 
 
 def sampling(args):
@@ -169,7 +170,7 @@ def upsample_by_class(x_s,y_s,x_t,y_t):
     return x_s_ups, y_s_ups, x_t_ups, y_t_ups
 
 class S_T_AE():
-    def __init__(self, s_ae, t_ae, n_classes, latent_dim=100):
+    def __init__(self, s_ae, t_ae, n_classes, latent_dim=100, beta = 0.5):
         self.s_input_shape = s_ae.input_shape
         self.latent_dim = latent_dim
         self.n_classes = n_classes
@@ -179,6 +180,7 @@ class S_T_AE():
         self.classifier = None
         self.s_ae = s_ae  #Source Auto Encoder
         self.t_ae = t_ae    #Target Auto Encoder
+        self.beta = beta
 
         # self.s_build_model()
         # self.t_build_model()
@@ -242,8 +244,8 @@ class S_T_AE():
 
         model = Sequential()
         model.add(Dense(self.latent_dim, activation='relu', input_dim=self.latent_dim))
-        # model.add(Dense(40, activation='relu'))
-        model.add(Dense(20, activation='relu'))
+        model.add(Dense(40, activation='relu'))
+        model.add(Dense(30, activation='relu'))
         model.add(Dense(self.n_classes, activation='softmax'))
 
         feats = Input(shape=(self.latent_dim,))
@@ -315,7 +317,7 @@ class S_T_AE():
         xent_loss =  binary_crossentropy(K.flatten(y_true), K.flatten(y_pred)) / self.t_total_pixel
         # kl_loss = - 0.25 * K.sum(1 + self.t_z_log_var - K.square(self.t_z_mean) - K.exp(self.t_z_log_var), axis=-1)
         mmd_loss = maximum_mean_discrepancy(self.s_ae.encoded, self.t_ae.encoded, kernel=gaussian_kernel)
-        vae_loss = K.mean(xent_loss +  0.5 * mmd_loss)
+        vae_loss = K.mean(xent_loss +  self.beta * mmd_loss)
         return vae_loss
 
 
@@ -348,10 +350,10 @@ if __name__ == '__main__':
     
     with h5py.File('usps.h5', 'r') as hf:
         train = hf.get('train')
-        X_train['U'] = train.get('data')[:].reshape(-1,16,16,1)
+        X_train['U'] = train.get('data')[:].reshape(-1,16,16,1)/255
         y_train['U'] = train.get('target')[:]
         test = hf.get('test')
-        X_test['U'] = test.get('data')[:].reshape(-1,16,16,1)
+        X_test['U'] = test.get('data')[:].reshape(-1,16,16,1)/255
         y_test['U'] = test.get('target')[:]
 
     train = None
@@ -359,12 +361,12 @@ if __name__ == '__main__':
     #Loading svhn dataset
     svhn_train = loadmat('svhn/train_32x32.mat')
     x_sv_train = svhn_train['X']
-    X_train['S'] = np.moveaxis(x_sv_train, -1, 0)
+    X_train['S'] = np.moveaxis(x_sv_train, -1, 0) /255
     y_sv_train = svhn_train['y'].reshape(-1)
 
     svhn_test = loadmat('svhn/test_32x32.mat')
     x_sv_test = svhn_test['X']
-    X_test['S'] = np.moveaxis(x_sv_test, -1, 0)
+    X_test['S'] = np.moveaxis(x_sv_test, -1, 0) /255
 
     y_sv_test = svhn_test['y'].reshape(-1)
     y_train['S'] = np.where(y_sv_train==10, 0, y_sv_train)
@@ -398,6 +400,19 @@ if __name__ == '__main__':
     source = 'S'
     target = 'M'
 
+    # x_s = np.concatenate((X_train[source], X_test[source]))
+    # y_s = np.concatenate((y_train[source], y_test[source]))
+
+    # x_t = np.concatenate((X_train[target], X_test[target]))
+    # y_t = np.concatenate((y_train[target], y_test[target]))
+
+    # target_data_frac = [0.1, 0.3, 0.5, 0.8]
+    
+    # for tdf in target_data_frac:
+
+    # x_s_train, x_s_test, y_s_train, y_s_test  = train_test_split(x_s, y_s, stratify = y_s, test_size = tdf)
+    # x_t_train, x_t_test, y_t_train, y_t_test  = train_test_split(x_t, y_t, stratify = y_t, test_size = tdf)
+
     x_s_train, y_s_train, x_s_test, y_s_test = X_train[source], y_train[source], X_test[source], y_test[source]
     x_t_train, y_t_train, x_t_test, y_t_test = X_train[target], y_train[target], X_test[target], y_test[target]
 
@@ -427,7 +442,7 @@ if __name__ == '__main__':
     # intermediate_dim = 512
     batch_size = 128
     latent_dim = 100
-    epochs = 50
+    epochs = 60000
     n_classes = 10
 
     s_ae = auto_encoder_dict[source](s_input_shape, latent_dim)
@@ -446,22 +461,18 @@ if __name__ == '__main__':
     plot_model(stae.ae_source_target, to_file='ae_enc_dec.png', show_shapes=True)
 
     
-    # hist = stae.ae_source_target.fit([x_s_train, x_t_train], [x_s_train, x_t_train],
-    #                             epochs=epochs,
-    #                             verbose=2,
-    #                             batch_size=batch_size,
-    #                             validation_data=([x_s_test, x_t_test], [x_s_test, x_t_test]))
+    hist = stae.ae_source_target.fit([x_s_train, x_t_train], [x_s_train, x_t_train],
+                                epochs=epochs,
+                                verbose=2,
+                                batch_size=batch_size,
+                                validation_data=([x_s_test, x_t_test], [x_s_test, x_t_test]))
 
 
-    # stae.ae_source_target.save_weights(f'model_weights/ae_{source}_to_{target}.h5')
+    stae.ae_source_target.save_weights(f'model_weights/ae_{source}_to_{target}.h5')
 
 
     stae.ae_source_target.load_weights(f'model_weights/ae_{source}_to_{target}.h5')
 
-    recons = stae.ae_source_target.predict([x_s_test, x_t_test])[0]
-    # plt.imshow(recons[3253,:,:,0])
-    # plt.savefig('sample.png')
-    # plt.show()
 
     stae.build_s_enc_cls_model()
     for layer in stae.s_enc_cls_model.layers:
@@ -473,7 +484,7 @@ if __name__ == '__main__':
     stae.s_enc_cls_model.summary()
     clbck = EarlyStopping(patience=15)
     hist = stae.s_enc_cls_model.fit(x_s_train, y_s_train,
-                        epochs = 1000,
+                        epochs = 2000,
                         verbose=2,
                         callbacks= [clbck],
                         batch_size=64,
@@ -487,7 +498,7 @@ if __name__ == '__main__':
 
     stae.build_t_enc_cls_model()
     stae.t_enc_cls_model.summary()
-    opt = Adam(lr = 0.000001)
+    opt = Adam(lr = 0.0001)
     stae.t_enc_cls_model.compile(loss='categorical_crossentropy', optimizer=opt, metrics=['accuracy'])
 
     # t_pred = stae.t_enc_cls_model.predict(x_t_train)
@@ -495,7 +506,7 @@ if __name__ == '__main__':
     # print(f"Target sore, Before Fine tune: {t_score}")
     
     hist = stae.t_enc_cls_model.fit(x_t_test, y_t_test,
-                        epochs=1000,
+                        epochs=3000,
                         verbose = 2,
                         batch_size=64,
                         validation_data=(x_t_train, y_t_train))
@@ -503,7 +514,7 @@ if __name__ == '__main__':
     t_score = accuracy_score(y_t_train.argmax(1), t_pred.argmax(1))
     print(f"Target score {source} to {target}, After Fine tune: {t_score}")
 
-    hist.history
+'''
 
     def save_dict_to_file(dic):
         f = open(f'hist_{source}_to_{target}.txt','w')
@@ -521,3 +532,4 @@ if __name__ == '__main__':
     d = load_dict_from_file()
     d.keys()
     plt.plot(hist.history['val_acc'])
+'''

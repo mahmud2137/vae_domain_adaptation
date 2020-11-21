@@ -5,6 +5,7 @@ from matplotlib import image
 from os import listdir
 from PIL import Image
 from sklearn.preprocessing import OneHotEncoder
+from torchvision.datasets import ImageFolder
 
 office_dir = 'office_data/'
 domains = ['amazon', 'dslr', 'webcam']
@@ -62,3 +63,7 @@ def load_office_data(data_dir = 'office_data/', domains = ['amazon', 'dslr', 'we
 # classes
 # y['webcam']
 # plt.imshow(X['webcam'][150])
+
+if __name__ == '__main__':
+    amz = ImageFolder('office_data/amazon/images')
+    print(len(amz))

@@ -34,8 +34,13 @@ os.environ["CUDA_VISIBLE_DEVICES"]="0"
 #Loading Office dataß
 X, y = load_office_data()
 domains = ['amazon', 'dslr', 'webcam']
+
+for d in domains:
+    X[d] = X[d]/255
+
+
 source = domains[0]
-target = domains[1]
+target = domains[2]
 
 x_s_train, x_s_test, y_s_train, y_s_test = train_test_split(X[source], y[source], stratify = y[source], test_size = 0.2)
 x_t_train, x_t_test, y_t_train, y_t_test = train_test_split(X[target], y[target], stratify = y[target], test_size = 0.2)
@@ -79,7 +84,7 @@ stae.ae_source_target.summary()
 
 
 # stae.ae_source_target.summary()
-epochs = 200
+epochs = 500
 losses = {f'{source}_output': stae.s_ae_loss, f'{target}_output': stae.t_ae_loss}
 opt = Adam(lr=0.00001)
 stae.ae_source_target.compile(loss = losses, optimizer=opt)
@@ -99,7 +104,7 @@ stae.ae_source_target.save_weights(f'model_weights/ae_{source}_to_{target}.h5')
 stae.ae_source_target.load_weights(f'model_weights/ae_{source}_to_{target}.h5')
 
 # recons = stae.ae_source_target.predict([x_s_test, x_t_test])[0]
-# plt.imshow(recons[16,:,:,0])
+# plt.imshow(recons[26,:,:,0])
 # plt.savefig('sample.png')
 # plt.show()
 
@@ -109,12 +114,12 @@ for layer in stae.s_enc_cls_model.layers:
     layer.trainable = False
 
 stae.classifier.trainable = True
-opt = Adam(lr = 0.0001)
+opt = Adam(lr = 0.001)
 stae.s_enc_cls_model.compile(loss='categorical_crossentropy', optimizer=opt)
 stae.s_enc_cls_model.summary()
-clbck = EarlyStopping(patience=5)
+clbck = EarlyStopping(patience=10)
 stae.s_enc_cls_model.fit(x_s_train, y_s_train,
-                    epochs = 50,
+                    epochs = 200,
                     verbose=2,
                     callbacks= [clbck],
                     batch_size=64,
@@ -135,7 +140,7 @@ stae.t_enc_cls_model.compile(loss='categorical_crossentropy', optimizer='adam')
 # print(f"Target sore, Before Fine tune: {t_score}")
 
 stae.t_enc_cls_model.fit(x_t_test, y_t_test,
-                    epochs=5,
+                    epochs=200,
                     verbose = 2,
                     batch_size=64,
                     validation_data=(x_t_train, y_t_train))

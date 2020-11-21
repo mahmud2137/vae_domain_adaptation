@@ -37,9 +37,11 @@ CGrade_to_particle_size = {120:116, 150:93, 180:78, 220:66, 240:53.5, 320:36, 40
 X_radar = np.expand_dims(X_radar, axis=-1)
 X_lidar = np.expand_dims(X_lidar, axis=-1)
 
-# le  = LabelEncoder()
-# y_radar_ = le.fit_transform(y_radar)
-# y_radar_ = to_categorical(y_radar_)
+le  = LabelEncoder()
+y_radar_ = le.fit_transform(y_radar)
+y_lidar_ = le.fit_transform(y_lidar)
+# y_radar_ = to_categorical(y_radar)
+# y_lidar_ = to_categorical(y_lidar)
 
 y_radar_ = np.array([CGrade_to_particle_size[x] for x in y_radar])
 y_lidar_ = np.array([CGrade_to_particle_size[x] for x in y_lidar])
@@ -62,6 +64,13 @@ x_t_train, x_t_test, y_t_train, y_t_test = train_test_split(X[tgt], y[tgt], stra
 x_s_train, y_s_train, x_t_train, y_t_train = upsample_by_class(x_s_train, y_s_train, x_t_train, y_t_train)
 x_s_test, y_s_test, x_t_test, y_t_test = upsample_by_class(x_s_test, y_s_test, x_t_test, y_t_test)       
 
+# y_s_train = to_categorical(y_s_train)
+# y_s_test = to_categorical(y_s_test)
+
+# y_t_train = to_categorical(y_t_train)
+# y_t_test = to_categorical(y_t_test)
+
+
 # network parameters
 s_input_shape = x_s_train.shape[1:]
 t_input_shape = x_t_train.shape[1:]
@@ -69,8 +78,9 @@ t_input_shape = x_t_train.shape[1:]
 batch_size = 64
 latent_dim = 100
 
-s_ae = AutoEncoder_Radar(s_input_shape, output_layer_name= f'{src}_output', latent_dim=latent_dim)
-t_ae = AutoEncoder_Lidar(t_input_shape, output_layer_name= f'{tgt}_output', latent_dim= latent_dim)
+AE_dict = {'radar': AutoEncoder_Radar, 'lidar': AutoEncoder_Lidar}
+s_ae = AE_dict[src](s_input_shape, output_layer_name= f'{src}_output', latent_dim=latent_dim)
+t_ae = AE_dict[tgt](t_input_shape, output_layer_name= f'{tgt}_output', latent_dim= latent_dim)
 
 class Ae_Radar_Lidar(S_T_AE):
     def __init__(self, s_ae, t_ae, n_classes, latent_dim=100, beta=0.5):
@@ -90,7 +100,7 @@ stae = Ae_Radar_Lidar(s_ae, t_ae, n_classes=1, beta = 0.004)
 stae.t_encoder.summary()
 stae.ae_source_target.summary()
 
-epochs = 10
+epochs = 30
 losses = {f'{src}_output': stae.s_ae_loss, f'{tgt}_output': stae.t_ae_loss}
 opt = Adam(lr=0.0001)
 stae.ae_source_target.compile(loss = losses, optimizer=opt)
@@ -111,8 +121,8 @@ stae.ae_source_target.load_weights(f'model_weights/ae_{src}_to_{tgt}.h5')
 
 
 stae.build_s_enc_cls_model()
-for layer in stae.s_enc_cls_model.layers:
-    layer.trainable = False
+# for layer in stae.s_enc_cls_model.layers:
+#     layer.trainable = False
 
 stae.classifier.trainable = True
 opt = Adam(lr = 0.00001)
@@ -120,7 +130,7 @@ stae.s_enc_cls_model.compile(loss='mse', optimizer=opt)
 # stae.s_enc_cls_model.summary()
 clbck = EarlyStopping(patience=20)
 stae.s_enc_cls_model.fit(x_s_train, y_s_train,
-                    epochs = 30,
+                    epochs = 50,
                     verbose=2,
                     callbacks= [clbck],
                     batch_size=64,
@@ -143,6 +153,24 @@ stae.t_enc_cls_model.fit(x_t_test, y_t_test,
                     batch_size=64,
                     validation_data=(x_t_train, y_t_train))
 
+
 t_pred = stae.t_enc_cls_model.predict(x_t_train)
 t_r2_score = r2_score(y_t_train, t_pred)
 print(f"Target score {src} to {tgt}, After Fine tune: {t_r2_score}")
+
+
+# Loading Cheetah data
+grass1_l, grass1_r  = load_sandpaper_data(path='cheetah_data/', folder='grass1')
+grass1_l = np.expand_dims(grass1_l, axis=-1)
+grass1_l_pred = stae.t_enc_cls_model.predict(grass1_l)
+
+grass2_l, grass2_r  = load_sandpaper_data(path='cheetah_data/', folder='grass2')
+grass2_l = np.expand_dims(grass2_l, axis=-1)
+grass2_l_pred = stae.t_enc_cls_model.predict(grass2_l)
+
+plt.plot(grass2_l_pred)
+
+np.save("grass2_radar_2_lidar.npy", grass2_l_pred)
+    
+
+
