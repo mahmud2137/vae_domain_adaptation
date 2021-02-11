@@ -66,6 +66,7 @@ class AutoEncoder_vgg16():
         latent_layer = Dense(self.latent_dim, activation='relu')(vgg_model.output)
         model = Model(inputs = vgg_model.input, outputs = latent_layer)
         return model
+        
 
 
     def decoder_layers(self,x):
