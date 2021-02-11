@@ -2,7 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 from keras.layers import Lambda, Reshape, Input, Dense, Conv2D, MaxPool2D, Flatten, UpSampling2D, concatenate
 from keras.models import Model, Sequential
 from keras.datasets import mnist
@@ -36,7 +37,6 @@ X_lidar, y_lidar, X_radar, y_radar = load_sandpaper_data("sandpaper_data/")
 CGrade_to_particle_size = {120:116, 150:93, 180:78, 220:66, 240:53.5, 320:36, 400:23.6, 600:16, 800:12.2, 1000:9.2, 1200:6.5}
 X_radar = np.expand_dims(X_radar, axis=-1)
 X_lidar = np.expand_dims(X_lidar, axis=-1)
-
 le  = LabelEncoder()
 y_radar_ = le.fit_transform(y_radar)
 y_lidar_ = le.fit_transform(y_lidar)
