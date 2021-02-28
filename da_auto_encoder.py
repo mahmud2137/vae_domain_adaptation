@@ -174,9 +174,9 @@ class S_T_AE():
         self.s_input_shape = s_ae.input_shape
         self.latent_dim = latent_dim
         self.n_classes = n_classes
-        self.s_total_pixel = s_ae.input_shape[0] * s_ae.input_shape[1]
+        self.s_total_pixel = s_ae.input_shape[0] * s_ae.input_shape[1] * s_ae.input_shape[2]
         self.t_input_shape = t_ae.input_shape
-        self.t_total_pixel = t_ae.input_shape[0] * t_ae.input_shape[1]
+        self.t_total_pixel = t_ae.input_shape[0] * t_ae.input_shape[1] * t_ae.input_shape[2]
         self.classifier = None
         self.s_ae = s_ae  #Source Auto Encoder
         self.t_ae = t_ae    #Target Auto Encoder
@@ -280,6 +280,7 @@ class S_T_AE():
         t_latent_space = self.t_ae.encoder_layers(t_input_layer)
         
         self.t_encoder = Model(t_input_layer, self.t_ae.encoded, name = 't_encoder')
+        self.t_encoder.get_layer(name = "vgg16").name = "vgg16_1"
         conc = concatenate([self.dummy_layer, t_latent_space])
         t_output_layer = self.t_ae.decoder_layers(conc)
 
@@ -301,7 +302,7 @@ class S_T_AE():
         # return t_enc_cls_model
 
     def s_ae_loss(self, y_true, y_pred):
-        xent_loss = binary_crossentropy(K.flatten(y_true), K.flatten(y_pred)) / self.s_total_pixel
+        xent_loss = binary_crossentropy(K.flatten(y_true), K.flatten(y_pred))# / self.s_total_pixel
         # kl_loss = - 0 * K.sum(1 + self.s_z_log_var - K.square(self.s_z_mean) - K.exp(self.s_z_log_var), axis=-1)
         # vae_loss = K.mean(xent_loss + kl_loss)
         return xent_loss
@@ -316,9 +317,9 @@ class S_T_AE():
 
         xent_loss =  binary_crossentropy(K.flatten(y_true), K.flatten(y_pred)) / self.t_total_pixel
         # kl_loss = - 0.25 * K.sum(1 + self.t_z_log_var - K.square(self.t_z_mean) - K.exp(self.t_z_log_var), axis=-1)
-        mmd_loss = maximum_mean_discrepancy(self.s_ae.encoded, self.t_ae.encoded, kernel=gaussian_kernel)
-        vae_loss = K.mean(xent_loss +  self.beta * mmd_loss)
-        return vae_loss
+        # mmd_loss = maximum_mean_discrepancy(self.s_ae.encoded, self.t_ae.encoded, kernel=gaussian_kernel)
+        # vae_loss = K.mean(xent_loss +  self.beta * mmd_loss)
+        return xent_loss#vae_loss
 
 
 

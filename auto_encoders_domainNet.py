@@ -7,7 +7,7 @@ from keras.layers import Lambda, MaxPooling2D, Dropout, ZeroPadding2D, ZeroPaddi
 # from keras.layers.core import Dropout
 from keras.models import Model, Sequential
 
-from tensorflow.keras.applications import VGG16
+from keras.applications import VGG16
 
 from keras.datasets import mnist
 from keras.optimizers import Adam
@@ -28,11 +28,13 @@ import argparse
 import os
 
 class AutoEncoder_vgg16():
-    def __init__(self, input_shape, latent_dim=100):
+    def __init__(self, output_layer_name ,input_shape = (224,224,3), latent_dim=100):
         self.input_shape = input_shape
         self.latent_dim = latent_dim
+        # self.layer_no = layer_no
+        self.output_layer_name = output_layer_name
 
-    def encoder(self):
+    def encoder_layers(self, x):
         #################################
         # Encoder
         #################################
@@ -62,22 +64,42 @@ class AutoEncoder_vgg16():
         # pool5 = MaxPooling2D(pool_size = (2,2), strides = (2,2), name = 'pool_5')(conv5)
         # # return pool5
         # model = Model(inputs = inputs, outputs = pool5, name = 'vgg16_encoder')
-        vgg_model = VGG16(include_top=False ,input_shape= self.input_shape)
-        latent_layer = Dense(self.latent_dim, activation='relu')(vgg_model.output)
-        model = Model(inputs = vgg_model.input, outputs = latent_layer)
-        return model
-        
+        vgg_model = VGG16(include_top = False ,input_shape= self.input_shape)
+        # for layer in vgg_model.layers:
+        #     layer.name = layer.name + str(self.layer_no)
+
+        f = Flatten()(vgg_model(x))
+        self.encoded = Dense(self.latent_dim, activation='relu')(f)
+        # model = Model( inputs=vgg_model.input, outputs = self.encoded)
+        return self.encoded
+
 
 
     def decoder_layers(self,x):
     
-        x = Dense(7*7*32, activation='relu')(x)
-        x = Reshape((7,7,32))(x)
-        x = Conv2D(32, (2,2), padding = 'same', strides = (1,1), activation = 'relu')(x)
+        x = Dense(7*7*512, activation='relu')(x)
+        x = Reshape((7,7,512))(x)
         x = UpSampling2D((2,2))(x)
-        x = Conv2D(16, (3,3), padding = 'same', strides = (1,1), activation = 'relu')(x)
+
+        x = Conv2D(512, (3,3), padding = 'same', strides = 1, activation = 'relu')(x)
         x = UpSampling2D((2,2))(x)
-        outputs = Conv2D(self.input_shape[2], (3,3), padding = 'same', strides = (1,1), activation = 'sigmoid', name ='M_output')(x)
+
+        x = Conv2D(512, (3,3), padding = 'same', strides = 1, activation = 'relu')(x)
+        x = UpSampling2D((2,2))(x)
+
+        x = Conv2D(256, (3,3), padding = 'same', strides = 1, activation = 'relu')(x)
+        x = UpSampling2D((2,2))(x)
+
+        x = Conv2D(256, (3,3), padding = 'same', strides = 1, activation = 'relu')(x)
+        # x = UpSampling2D((2,2))(x)
+
+        x = Conv2D(128, (3,3), padding = 'same', strides = 1, activation = 'relu')(x)
+        x = UpSampling2D((2,2))(x)
+
+        x = Conv2D(64, (3,3), padding = 'same', strides = 1, activation = 'relu')(x)
+        # x = UpSampling2D((2,2))(x)
+
+        outputs = Conv2D(self.input_shape[2], (3,3), padding = 'same', strides = (1,1), activation = 'sigmoid', name = self.output_layer_name)(x)
         return outputs
 
 class AutoEncoder_USPS():
@@ -109,6 +131,6 @@ class AutoEncoder_USPS():
 
 if __name__ == '__main__':
 
-    ae_vgg16 = AutoEncoder_vgg16(input_shape=(200,200,3))
-    enc_model = ae_vgg16.encoder()
+    ae_vgg16 = AutoEncoder_vgg16(output_layer_name='a')
+    enc_model = ae_vgg16.encoder_layers()
     enc_model.summary()
